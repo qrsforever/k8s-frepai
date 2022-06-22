@@ -1,0 +1,56 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: storage-cleanup-cronjob
+  namespace: frepai
+spec:
+  # schedule: "0 0 * * 1-5"
+  # schedule: "0,15,30,45 * * * *"
+  # schedule: "*/1 * * * *"
+  schedule: "1 */2 * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 10
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 0
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: k8s-nfs-cleanup
+            image: ubuntu
+            imagePullPolicy: IfNotPresent
+            command:
+            - /bin/sh
+            - -c
+            - |
+              CACHE_PATH=/data/cache
+              RM_RECORD=${CACHE_PATH}/rm.txt
+              timestamp=$(date -u +%s)
+              timestamp=$(expr $timestamp - 3600)
+              timestamp=$(expr $timestamp \* 1000)
+              echo "$(hostname) $(date)" > ${RM_RECORD}
+              for item in $(ls ${CACHE_PATH})
+              do
+                  if [ -d ${CACHE_PATH}/${item} ]
+                  then
+                      if [ ${item} -lt ${timestamp} ]
+                      then
+                          echo "${item}" >> ${RM_RECORD}
+                          rm -rf ${CACHE_PATH}/${item}
+                      fi
+                  fi
+              done
+              cat ${RM_RECORD}
+
+            volumeMounts:
+              - name: k8s-nfs
+                mountPath: /data
+                subPath: frepai
+
+          volumes:
+            - name: k8s-nfs
+              persistentVolumeClaim:
+                claimName: frepai-pvc-nfs
+
+          restartPolicy: OnFailure

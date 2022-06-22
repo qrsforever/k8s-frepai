@@ -1,0 +1,12 @@
+FROM hzcsk8s.io/srs_bin
+
+COPY srs/conf/frepai_srs.conf /usr/local/srs/conf/frepai_srs.conf
+
+RUN mkdir -p /frepai/data
+
+EXPOSE 1935 1985 8080 8000/udp 10080/udp
+
+WORKDIR /usr/local/srs
+CMD ["./objs/srs", "-c", "conf/frepai_srs.conf"]
+
+# SSAA-360395-FDBAA: 00207e3b8ab0

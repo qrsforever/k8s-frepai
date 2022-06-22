@@ -1,0 +1,104 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: engine-service
+  namespace: frepai
+spec:
+  selector:
+    app: engine-app
+  ports:
+    - port: 22828
+      targetPort: 1818
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: engine-deployment
+  namespace: frepai
+  labels:
+    app: engine-app
+spec:
+  selector:
+    matchLabels:
+      app: engine-app
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: engine-app
+    spec:
+      containers:
+        - name: engine
+          image: hzcsk8s.io/frepai/engine
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 1818
+          command: ["/bin/bash"]
+          args: ["-c", "python3 app_service.py --task engine"]
+
+          # envFrom:
+          #   - configMapRef:
+          #       name: frepai-app-cm
+
+          env:
+            - name: KAFKA_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: frepai-kafka-cm
+                  key: kafka_host
+
+            - name: KAFKA_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: frepai-kafka-cm
+                  key: kafka_port
+
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+
+          livenessProbe:
+         #   httpGet:
+         #     path: /k8s/probe/liveness
+         #     port: 1818
+            exec:
+              command: ["test", "-e", "/tmp/healthy"]
+            initialDelaySeconds: 5
+            timeoutSeconds: 3
+            periodSeconds: 30
+            failureThreshold: 3
+
+         # readinessProbe:
+         #   httpGet:
+         #     path: /k8s/probe/readiness
+         #     port: 1818
+         #   initialDelaySeconds: 3
+         #   periodSeconds: 3
+
+          volumeMounts:
+            - name: k8s-nfs
+              mountPath: /data
+              subPath: frepai
+
+          # debug code
+          # - name: k8s-nfs
+          #   mountPath: /app
+          #   subPath: codes/hzcsk8s/examples/frepai/app
+
+      volumes:
+      - name: k8s-nfs
+        persistentVolumeClaim:
+          claimName: frepai-pvc-nfs
+
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 10
+
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+
+      # nodeSelector:
+      #   accelerator: "nvidia-tesla-t4"

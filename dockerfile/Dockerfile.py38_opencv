@@ -1,0 +1,54 @@
+FROM hzcsk8s.io/py38_build as build
+
+RUN apk add --no-cache \
+        openblas-dev \
+        freetype-dev \
+        libpng-dev \
+        jpeg-dev \
+        libjpeg-turbo-dev
+        libavcodec-dev \
+        libavformat-dev \
+        libswscale-dev \
+        libv4l-dev \
+        libxvidcore-dev \
+        libx264-dev \
+        libatlas-base-dev \
+        libgl1-mesa-glx \
+        ffmpeg
+        
+RUN pip wheel \
+        --wheel-dir=/root/wheels \
+        numpy==1.19.5 \
+        opencv-python==4.5.5.62 \
+        scikit-learn \
+        scipy \
+        matplotlib==3.5.1
+
+FROM python:3.8.9-alpine as target
+
+COPY --from=build /root/wheels /root/wheels
+
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && \
+        pip config set global.index-url https://mirrors.aliyun.com/pypi/simple && \
+        pip config set install.trusted-host https://mirrors.aliyun.com
+
+RUN apk update && pip install -U pip setuptools
+
+RUN apk add --no-cache \
+        freetype \
+        libpng \
+        libjpeg-turbo \
+        freetype-dev \
+        libpng-dev \
+        jpeg-dev \
+        libjpeg \
+        libjpeg-turbo-dev
+
+RUN pip install \
+        --no-index \
+        --find-links=/root/wheels \
+        numpy==1.19.5 \
+        opencv-python==4.5.5.62 \
+        scikit-learn \
+        scipy \
+        matplotlib==3.5.1

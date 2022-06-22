@@ -1,0 +1,112 @@
+[
+    {
+        "task": "xx",
+        "cfg": {
+            "pigeon": {
+                "msgkey": "frepai_output",
+                "created_at": "2022-03-3010:16:15",
+                "out_path": "https://frepai-1301930378.cos.ap-beijing.myqcloud.com//datasets/factory/00047dd87188/5f664f765da9192729819d35ed1f19d1.pkl",
+                "major": 598384,
+                "mac_addr": "00047dd87188",
+                "use_sample_id_slice": [
+                    32
+                ]
+            },
+            "pcaks": [
+                {
+                    "ef_url": "https://frepai-1301930378.cos.ap-beijing.myqcloud.com/datasets/factory/00047dd87188/outputs/20220225104238/repnet_tf/embs_feat.npy",
+                    "slices": [
+                        1,
+                        3,
+                        12,
+                        13,
+                        14,
+                        16,
+                        17,
+                        18,
+                        19
+                    ]
+                }
+            ],
+            "scaler": "Normalizer",
+            "n_components": 100
+        }
+    },
+    {
+        "task": "xx",
+        "cfg": {
+            "pigeon": {
+                "msgkey": "frepai_output",
+                "push_video_addr": "https://frepai-1301930378.cos.ap-beijing.myqcloud.com/datasets/factory/00047dd87188/20220322/20220225104238.mp4",
+                "created_at": "2022-03-3010:10:32",
+                "etag": "819f82206bbd04838acf4c2598dc769d",
+                "major": 598365,
+                "mac_addr": "",
+                "uuid": "",
+                "video_id": 583887,
+                "actual_tally": 0,
+                "auto_tally": 0,
+                "file_name": "",
+                "data_set": 0,
+                "param_md5": "806b7861358c38442fa126a8d1901661",
+                "embs_feat": "",
+                "embs_sims": "",
+                "user_id": 0,
+                "batch_sign": "",
+                "analysis_id": 0
+            },
+            "video": "https://frepai-1301930378.cos.ap-beijing.myqcloud.com/datasets/factory/00047dd87188/20220322/20220225104238.mp4",
+            "constant_speed": false,
+            "median_filter": true,
+            "fully_periodic": false,
+            "batch_size": 20,
+            "temperature": 13.544,
+            "strides": [
+                1
+            ],
+            "angle": 90,
+            "reg_factor": 1,
+            "detect_focus": false,
+            "focus_box": [
+                0.378,
+                0.157,
+                0.496,
+                0.321
+            ],
+            "focus_box_repnum": 6,
+            "black_box": [
+                0,
+                0,
+                0,
+                0
+            ],
+            "black_overlay": false,
+            "best_stride_video": true,
+            "osd_sims": true,
+            "osd_feat": false,
+            "save_video": false,
+            "ef_is_send": true,
+            "ef_url": "https://frepai-1301930378.cos.ap-beijing.myqcloud.com/datasets/factory/00047dd87188/5f664f765da9192729819d35ed1f19d1.pkl",
+            "ef_alpha": 0.05,
+            "ef_beta": 0.7,
+            "ef_gamma": 0.8,
+            "dev_args": "",
+            "tsm_last_enable": false,
+            "tsm_last_threshold": 0.5,
+            "tsm_last_smooth": false,
+            "rmstill_frame_enable": true,
+            "rmstill_bin_threshold": 20,
+            "rmstill_rate_threshold": 0.1,
+            "rmstill_brightness_norm": false,
+            "rmstill_area_mode": 0,
+            "rmstill_noise_level": 1,
+            "color_tracker_enable": false,
+            "color_select": 0,
+            "color_rate_threshold": 0.9,
+            "color_buffer_size": 12,
+            "color_lower_rate": 0.2,
+            "color_upper_rate": 0.8,
+            "color_track_direction": 0
+        }
+    }
+]

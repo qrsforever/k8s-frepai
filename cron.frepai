@@ -1,0 +1,26 @@
+#!/bin/bash
+
+NFS_FREPAI_CACHE_PATH=/data/k8s-nfs/frepai/cache
+RM_RECORD=${NFS_FREPAI_CACHE_PATH}/rm.txt
+
+timestamp=`date -u +%s`
+
+(( timestamp = timestamp - 3600 ))
+
+(( timestamp = timestamp * 1000 ))
+
+echo "$(date)" > ${RM_RECORD}
+
+for item in `ls $NFS_FREPAI_CACHE_PATH`
+do
+    if [[ -d ${NFS_FREPAI_CACHE_PATH}/${item} ]]
+    then
+        echo "${item} vs ${timestamp}"
+        if (( ${item} < ${timestamp} ))
+        then
+            echo "${item}" >> ${RM_RECORD}
+            rm -rf ${NFS_FREPAI_CACHE_PATH}/${item}
+        fi
+    fi
+    echo $item
+done

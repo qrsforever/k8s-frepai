@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-cleanup-daemonset
+  namespace: system
+spec:
+  selector:
+    matchLabels:
+      name: node-cleanup-app
+  template:
+    metadata:
+      labels:
+        name: node-cleanup-app
+    spec:
+      containers:
+        - name: containers-cleanup
+          image: ubuntu
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -c
+            - |
+              while true
+              do
+                echo "prune death containers..."
+                /usr/bin/docker container prune -f
+                echo "prune death images..."
+                /usr/bin/docker rmi $(docker images | awk '{if ($1 != "busybox"){print $3}}') 2>/dev/null
+                sleep 7200
+              done
+
+          volumeMounts:
+            - name: docker-sock
+              mountPath: /var/run/docker.sock
+            - name: docker-bin
+              mountPath: /usr/bin/docker
+
+      volumes:
+        - name: docker-sock
+          hostPath:
+            path: /var/run/docker.sock
+        - name: docker-bin
+          hostPath:
+            path: /usr/bin/docker
+
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+
+      tolerations:
+        - key: private/proxy
+          operator: Exists
+          effect: NoSchedule
+
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 3

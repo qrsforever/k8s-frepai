@@ -1,0 +1,30 @@
+{
+    "pigeon":{
+        "msgkey":"frepai_output",
+        "created_at":"2022-03-2910:13:42",
+        "out_path":"https://frepai-1301930378.cos.ap-beijing.myqcloud.com//datasets/factory/00047dd87188/5f664f765da9192729819d35ed1f19d1.pkl",
+        "major":594743,
+        "mac_addr":"00047dd87188",
+        "use_sample_id_slice":[
+            32
+        ]
+    },
+    "pcaks":[
+        {
+            "ef_url":"https://frepai-1301930378.cos.ap-beijing.myqcloud.com/datasets/factory/00047dd87188/outputs/20220225104238/repnet_tf/embs_feat.npy",
+            "slices":[
+                1,
+                3,
+                12,
+                13,
+                14,
+                16,
+                17,
+                18,
+                19
+            ]
+        }
+    ],
+    "scaler":"Normalizer",
+    "n_components":100
+}

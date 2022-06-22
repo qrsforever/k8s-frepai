@@ -1,0 +1,213 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: videoprocess-pre-service
+  namespace: frepai
+spec:
+  selector:
+    app: videoprocess-pre-app
+  ports:
+    - port: 21818
+      targetPort: 1818
+
+---
+
+kind: Service
+apiVersion: v1
+metadata:
+  name: videoprocess-post-service
+  namespace: frepai
+spec:
+  selector:
+    app: videoprocess-post-app
+  ports:
+    - port: 23838
+      targetPort: 1818
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: videoprocess-pre-deployment
+  namespace: frepai
+  labels:
+    app: videoprocess-pre-app
+spec:
+  selector:
+    matchLabels:
+      app: videoprocess-pre-app
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: videoprocess-pre-app
+        log: frepai
+    spec:
+      containers:
+        - name: videoprocess-pre
+          image: hzcsk8s.io/frepai/videoprocess
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 1818
+          command: ["/bin/bash"]
+          args: ["-c", "python3 app_service.py --task videoprocess.pre"]
+
+          # envFrom:
+          #   - configMapRef:
+          #       name: frepai-app-cm
+
+          env:
+            - name: KAFKA_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: frepai-kafka-cm
+                  key: kafka_host
+
+            - name: KAFKA_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: frepai-kafka-cm
+                  key: kafka_port
+
+            - name: KAFKA_TOPIC
+              valueFrom:
+                configMapKeyRef:
+                  name: frepai-kafka-cm
+                  key: frepai_topic_input
+
+          resources:
+            requests:
+              memory: "2.5Gi"
+              cpu: "0.8"
+            limits:
+              memory: "3Gi"
+              cpu: "0.8"
+
+          livenessProbe:
+          #   httpGet:
+          #     path: /k8s/probe/liveness
+          #     port: 1818
+            exec:
+              command: ["test", "-e", "/tmp/healthy"]
+            initialDelaySeconds: 5
+            timeoutSeconds: 3
+            periodSeconds: 20
+            failureThreshold: 3
+
+          # readinessProbe:
+          #   httpGet:
+          #     path: /k8s/probe/readiness
+          #     port: 1818
+          #   initialDelaySeconds: 3
+          #   periodSeconds: 3
+
+
+          volumeMounts:
+            - name: k8s-nfs
+              mountPath: /data
+              subPath: frepai
+
+          # debug code
+          # - name: k8s-nfs
+          #   mountPath: /app
+          #   subPath: codes/hzcsk8s/examples/frepai/app
+
+      volumes:
+        - name: k8s-nfs
+          persistentVolumeClaim:
+            claimName: frepai-pvc-nfs
+
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 10
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: videoprocess-post-deployment
+  namespace: frepai
+  labels:
+    app: videoprocess-post-app
+spec:
+  selector:
+    matchLabels:
+      app: videoprocess-post-app
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: videoprocess-post-app
+        log: frepai
+    spec:
+      containers:
+        - name: videoprocess-post
+          image: hzcsk8s.io/frepai/videoprocess
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 1818
+          command: ["/bin/bash"]
+          args: ["-c", "python3 app_service.py --task videoprocess.post"]
+
+          # envFrom:
+          #   - configMapRef:
+          #       name: frepai-app-cm
+
+          env:
+            - name: KAFKA_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: frepai-kafka-cm
+                  key: kafka_host
+
+            - name: KAFKA_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: frepai-kafka-cm
+                  key: kafka_port
+
+          resources:
+            requests:
+              memory: "2.5Gi"
+              cpu: "0.8"
+            limits:
+              memory: "3Gi"
+              cpu: "0.8"
+
+          livenessProbe:
+          #   httpGet:
+          #     path: /k8s/probe/liveness
+          #     port: 1818
+            exec:
+              command: ["test", "-e", "/tmp/healthy"]
+            initialDelaySeconds: 5
+            timeoutSeconds: 3
+            periodSeconds: 30
+            failureThreshold: 3
+
+          # readinessProbe:
+          #   httpGet:
+          #     path: /k8s/probe/readiness
+          #     port: 1818
+          #   initialDelaySeconds: 3
+          #   periodSeconds: 3
+
+          volumeMounts:
+            - name: k8s-nfs
+              mountPath: /data
+              subPath: frepai
+
+          # debug code
+          # - name: k8s-nfs
+          #   mountPath: /app
+          #   subPath: codes/hzcsk8s/examples/frepai/app
+
+
+      volumes:
+      - name: k8s-nfs
+        persistentVolumeClaim:
+          claimName: frepai-pvc-nfs
+
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 10

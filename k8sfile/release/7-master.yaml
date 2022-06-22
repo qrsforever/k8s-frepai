@@ -1,0 +1,86 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: master-service
+  namespace: system
+spec:
+  type: NodePort 
+  ports:
+    - port: 4848
+      targetPort: 4848
+      nodePort: 30048
+  selector:
+    app: master-app
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: master-deployment
+  namespace: system
+  labels:
+    app: master-app
+spec:
+  selector:
+    matchLabels:
+      app: master-app
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: master-app
+    spec:
+      containers:
+        - name: master
+          image: busybox
+          imagePullPolicy: IfNotPresent
+          tty: true
+          stdin: true
+          securityContext:
+            privileged: true
+          command: ["chroot", "/host", "python3", "/master/app.py" ]
+          ports:
+            - containerPort: 4848
+          volumeMounts:
+            - name: host
+              mountPath: /host
+      volumes:
+        - name: host
+          hostPath:
+            path: /
+      hostNetwork: true
+      hostIPC: true
+      hostPID: true
+      terminationGracePeriodSeconds: 10
+
+      tolerations:
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+
+      nodeSelector:
+        kubernetes.io/hostname: master
+
+---
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: master-ingress
+  namespace: system
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/use-regex: 'true'
+spec:
+  rules:
+    - host: factory.admin.hzcsdata.com
+      http:
+        paths:
+          - path: /master/(task|logcat)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: master-service
+                port:
+                  number: 4848

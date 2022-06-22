@@ -1,0 +1,16 @@
+FROM hzcsk8s.io/srs_bin
+
+RUN $APT_INSTALL python3 python3-pip && \
+    $PIP_INSTALL \
+        flask \
+        flask_cors \
+        kafka-python \
+        cos-python-sdk-v5
+
+EXPOSE 1818
+ENV PYTHONPATH=/app
+
+WORKDIR /app
+CMD ["/bin/sh", "-c", "python3 app_service.py --task srs.dvr"]
+
+ADD app /app

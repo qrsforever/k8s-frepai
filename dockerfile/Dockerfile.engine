@@ -1,0 +1,20 @@
+FROM hzcsk8s.io/tf_base
+
+WORKDIR /app
+EXPOSE 1818
+ENV PYTHONPATH=/app
+
+ADD ckpts /ckpts
+
+RUN $APT_INSTALL \
+        iputils-ping net-tools \
+        curl \
+    && $PIP_INSTALL install \
+        flask \
+        flask_cors \
+        numpy==1.22.3 \
+        kafka-python
+
+ENV TF_CPP_MIN_LOG_LEVEL=3
+
+ADD app /app

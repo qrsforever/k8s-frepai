@@ -1,0 +1,10 @@
+FROM python:3.8.9-alpine as build
+
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && \
+        pip config set global.index-url https://mirrors.aliyun.com/pypi/simple && \
+        pip config set install.trusted-host https://mirrors.aliyun.com
+
+RUN apk update && apk add --no-cache build-base openblas-dev libressl-dev curl-dev linux-headers g++ ninja
+RUN pip install -U pip setuptools
+RUN pip install scikit-build==0.13.1
+RUN pip install cmake==3.22.3

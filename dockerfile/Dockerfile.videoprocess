@@ -1,0 +1,17 @@
+FROM hzcsk8s.io/opencv_ubuntu
+
+WORKDIR /app
+EXPOSE 1818
+ENV PYTHONPATH=/app
+
+RUN $APT_INSTALL \
+        iputils-ping net-tools \
+        curl \
+    && $PIP_INSTALL \
+        flask \
+        flask_cors \
+        kafka-python \
+        python-snappy \
+        cos-python-sdk-v5
+
+ADD app /app

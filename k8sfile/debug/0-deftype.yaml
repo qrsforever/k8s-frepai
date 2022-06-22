@@ -1,0 +1,66 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: system
+
+---
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: frepai
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frepai-app-cm
+  namespace: frepai
+data:
+  APP_HOST: 0.0.0.0
+  APP_PORT: "1818"
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frepai-kafka-cm
+  namespace: frepai
+data:
+  kafka_host: 172.21.0.4
+  kafka_port: "19092"
+  frepai_topic_input: "frepai_test_input"
+  frepai_topic_srs: "frepai_test_srs"
+
+---
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: frepai-pv-nfs
+  namespace: frepai
+spec:
+  capacity:
+    storage: 200Gi
+  accessModes:
+    - ReadWriteMany
+  nfs:
+    path: /data/k8s-nfs
+    server: 172.21.0.4
+
+---
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: frepai-pvc-nfs
+  namespace: frepai
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 200Gi
+

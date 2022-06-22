@@ -1,0 +1,93 @@
+version: "3"
+
+services:
+  srs_bin:
+    image: hzcsk8s.io/srs_bin
+    build:
+      dockerfile: dockerfile/Dockerfile.srs_bin
+
+  srs_rtc:
+    image: hzcsk8s.io/frepai/srs_rtc
+    container_name: srs_rtc
+    build:
+      dockerfile: dockerfile/Dockerfile.srs_rtc
+    # environment:
+    #   CANDIDATE: 82.157.36.183
+    command:
+      - /bin/bash
+      - -c
+      - CANDIDATE=`curl -s ipecho.net/plain` ./objs/srs -c conf/frepai_srs.conf
+
+    ports:
+      - "1935:1935"
+      - "1985:1985"
+      - "8080:8080"
+      - "8000:8000/udp"
+      - "10080:10080/udp"
+      - "20808:1818"
+    expose: # for same network
+      - "1818"
+      - "1935"
+      - "1985"
+      - "8080"
+      - "8000/udp"
+      - "10080/udp"
+    volumes:
+      - ./srs/conf:/usr/local/srs/conf
+    privileged: true
+    networks:
+      - srs-bridge
+
+  srs_app:
+    image: hzcsk8s.io/frepai/srs_app
+    container_name: srs_app
+    build:
+      dockerfile: dockerfile/Dockerfile.srs_app
+    environment:
+      KAFKA_HOST: 172.21.0.4
+      KAFKA_PORT: 19092
+      KAFKA_TOPIC: test
+    depends_on: [srs_rtc]
+    privileged: true
+    network_mode: "container:srs_rtc"
+
+  opencv_ubuntu:
+    image: hzcsk8s.io/opencv_ubuntu
+    build:
+      dockerfile: dockerfile/Dockerfile.opencv_ubuntu
+    network_mode: bridge
+
+  tf_base:
+    image: hzcsk8s.io/tf_base
+    build:
+      dockerfile: dockerfile/Dockerfile.tf_base
+
+  engine:
+    image: hzcsk8s.io/frepai/engine
+    build:
+      dockerfile: dockerfile/Dockerfile.engine
+
+  videoprocess:
+    image: hzcsk8s.io/frepai/videoprocess
+    container_name: videoprocess
+    # depends_on: [kafka]
+    build:
+      context: .
+      dockerfile: dockerfile/Dockerfile.videoprocess
+    ports:
+      - "1818:1818"
+    working_dir: /app
+    volumes:
+      - ./app:/app
+    restart: always
+
+networks:
+  srs-bridge:
+    name: srs
+  frepai_default:
+    external: true
+    name: frepai
+
+# sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
+# sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories
+# apk add iputils

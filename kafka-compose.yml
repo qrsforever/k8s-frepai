@@ -1,0 +1,42 @@
+version: "3"
+
+# DOCKER_HOST_IP: 82.157.36.183
+
+services:
+  zookeeper:
+    image: wurstmeister/zookeeper
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+  kafka:
+    image: wurstmeister/kafka
+    container_name: kafka
+    depends_on: [ zookeeper ]
+    ports:
+      - "19092:19092"
+    expose: # same network
+      - "9092"
+    environment:
+      # RUN apk add -U tzdata && rm -rf /etc/localtime && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && echo 'Asia/Shanghai' > /etc/timezone
+      TZ: Asia/Shanghai
+      KAFKA_LISTENERS: INSIDE://kafka:9092,OUTSIDE://0.0.0.0:19092
+      KAFKA_ADVERTISED_LISTENERS: INSIDE://kafka:9092,OUTSIDE://${DOCKER_HOST_IP:-82.157.36.183}:19092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INSIDE
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_BROKER_ID: 1
+      KAFKA_CREATE_TOPICS: "frepai_input:24:1,frepai_output:24:1,engine_input:5:1,engine_output:24:1,frepai_srs:24:1"
+      KAFKA_LOG_DIRS: "/kafka/logs"
+
+      KAFKA_log_retention_hours: 48
+      KAFKA_log_retention_bytes: 1073741824 # 1G
+      KAFKA_auto_create_topics_enable: false
+      KAFKA_delete_topic_enable: true
+      # kafka-topics.sh --topic frepai_output --bootstrap-server 0.0.0.0:9092 --alter --partitions 24
+      # kafka-consumer-groups.sh --describe --bootstrap-server 0.0.0.0:9092 --group frepai
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /data/kafka/data:/kafka
+
+# restart
+# Edit meta.properties and remove line with cluster.id and restart kafka.

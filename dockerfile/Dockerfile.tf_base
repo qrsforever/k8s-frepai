@@ -1,0 +1,26 @@
+FROM tensorflow/tensorflow:2.6.1-gpu
+
+LABEL com.nvidia.volumes.needed="nvidia_driver"
+
+ENV TZ=Asia/Shanghai \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    PYTHONIOENCODING=utf-8 \
+    DEBIAN_FRONTEND=noninteractive \
+    APT_INSTALL="apt install -y --no-install-recommends" \
+    PIP_INSTALL="pip3 install --no-cache-dir --retries 20 --timeout 120 --trusted-host mirrors.aliyun.com --index-url https://mirrors.aliyun.com/pypi/simple"
+
+RUN sed -i 's/http:\/\/archive\.ubuntu\.com\/ubuntu\//http:\/\/mirrors\.aliyun\.com\/ubuntu\//g' /etc/apt/sources.list && \
+    rm /etc/apt/sources.list.d/cuda.list && rm /etc/apt/sources.list.d/nvidia-ml.list && \
+    apt-get update --fix-missing && $APT_INSTALL \
+        cmake locales \
+        pkg-config tzdata
+
+RUN $PIP_INSTALL -U pip && \
+        $PIP_INSTALL \
+        tensorflow-probability==0.14.0 \
+        statsmodels \
+        scipy==1.5.2 \
+        scikit-learn \
+        gevent \
+        opencv-python
