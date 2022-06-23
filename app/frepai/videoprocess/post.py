@@ -63,17 +63,25 @@ def _post_stdwave(pigeon, args, progress_cb):
 
     progress_cb(50)
     if devmode and len(stdwave_indexes) > 0:
+        stdwave_sigma_count = pigeon['stdwave_sigma_count']
+        stdwave_window_size = pigeon['stdwave_window_size']
+        stdwave_distance_size = pigeon['stdwave_distance_size']
+        stdwave_minstd_thresh = pigeon['stdwave_minstd_thresh']
+        mean, std, dd = pigeon['stdwave_mean'], pigeon['stdwave_std'], pigeon['stdwave_dd']
+
         tmp_video_file = f'{cache_path}/_stdwave.mp4'
         stdwave_data = np.load(f'{cache_path}/stdwave_data.npy')
         stdwave_post = np.load(f'{cache_path}/stdwave_post.npy')
         N, T = len(stdwave_data), pigeon['stdwave_threshold']
-        mean, std = pigeon['stdwave_mean'], pigeon['stdwave_std'] # noqa
         fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(48, 8), sharex=True, tight_layout=False)
         plt.subplots_adjust(left=0, bottom=0, right=1, top=1, hspace=0, wspace=0)
         plt.xlim(0, N)
         axes[0].scatter(range(N), stdwave_post)
-        axes[0].plot((0, N), (T, T), 'ro-', linewidth=5)
-        axes[0].plot((0, N), (mean, mean), 'go-', linewidth=5)
+        axes[0].axhline(y=T, color='r', marker='o', linestyle='-', linewidth=5)
+        axes[0].axhline(y=mean, color='g', marker='o', linestyle='-', linewidth=5)
+        for i in range(0, N - stdwave_distance_size, 2800):
+            axes[0].plot((i, i + stdwave_window_size), (T, T), 'bo-', linewidth=15)
+            axes[0].plot((i, i + stdwave_distance_size), (mean, mean), 'bo-', linewidth=15)
         axes[1].scatter(range(N), stdwave_data)
         progress_cb(60)
 
@@ -85,7 +93,6 @@ def _post_stdwave(pigeon, args, progress_cb):
         imgw, imgh = int(imgw), int(imgh)
         image = image.reshape((imgh, imgw, -1))
         image = cv2.cvtColor(image, cv2.COLOR_RGBA2BGR)
-        window = int(0.3 * imgw)
 
         cv2.imwrite(f'{cache_path}/stdwave.jpg', image)
         pigeon['upload_files'].append('stdwave.jpg')
@@ -107,10 +114,15 @@ def _post_stdwave(pigeon, args, progress_cb):
         if focus_box is not None:
             fx1, fy1, fx2, fy2 = focus_box
 
+        image = cv2.resize(image, (int(height * imgw / imgh), height), interpolation=cv2.INTER_LINEAR)
+        window = width # int(0.3 * image.shape[1])
+
+        fontscale = 0.7 if height < 500 else 2
+
         frames, sum_counts = [], []
-        frames_indexes = np.sort(np.random.choice(all_frames_count, imgw, replace=False))
+        frames_indexes = np.sort(np.random.choice(all_frames_count, image.shape[1], replace=False))
         cap_index, cur_cnt = -1, 0
-        while len(frames) < imgw:
+        while len(frames) < image.shape[1]:
             success, frame_bgr = cap.read()
             if not success:
                 break
@@ -129,43 +141,47 @@ def _post_stdwave(pigeon, args, progress_cb):
         cap.release()
 
         progress_cb(70)
-
-        writer = cv2.VideoWriter(tmp_video_file, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
+        wfps = 2 * fps
+        writer = cv2.VideoWriter(tmp_video_file, cv2.VideoWriter_fourcc(*'mp4v'), wfps, (width, height))
 
         F = len(frames)
-        bimg = np.zeros((imgh, window, image.shape[2]), dtype=np.uint8)
-
+        bimg = 255 * np.ones((height, window, image.shape[2]), dtype=np.uint8)
         cv2.putText(bimg,
-                'Distances: %s' % pigeon['stdwave_dd'],
-                (2, int(0.4 * height)),
+                'D: %s' % dd,
+                (2, int(0.3 * height)),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.7 if height < 500 else 2,
-                (255, 255, 255), 5)
+                fontscale,
+                (0, 0, 0), 2)
 
-        image = np.hstack([image, bimg])
+        bimage = np.hstack([image, bimg])
+        logger.info(f'bimage shape: {bimage.shape} F: {F}')
 
         th = int(0.08 * height)
-        for i in range(imgw):
+        for i in range(image.shape[1]):
             if (i + 1) % 211 == 0:
-                progress_cb(70 + 19 * i / imgw)
-            img = image[:, i:i + window]
+                progress_cb(70 + 19 * i / image.shape[1])
+            img = bimage[:, i:i + window]
             img = cv2.resize(img, (width, height))
             if i < F:
                 img[height - INPUT_HEIGHT - 5:height - 5, 5:INPUT_WIDTH + 5, :] = frames[i] # [:,:,::-1]
                 cv2.putText(img,
-                        '%dX%d %.1f C:%.1f/%.1f' % (width, height, fps, sum_counts[i], sum_counts[-1]),
+                        '%dX%d %.1f F: %d C:%.1f/%.1f W:%d D:%d' % (
+                            width, height, wfps, F,
+                            sum_counts[i], sum_counts[-1],
+                            stdwave_window_size,
+                            stdwave_distance_size),
                         (2, int(0.06 * height)),
                         cv2.FONT_HERSHEY_SIMPLEX,
-                        0.7 if height < 500 else 2,
+                        fontscale,
                         (0, 0, 0), 2)
                 cv2.putText(img,
-                        "S: %d W:%d D: %d" % (
-                            pigeon['stdwave_sigma_count'],
-                            pigeon['stdwave_window_size'],
-                            pigeon['stdwave_distance_size']),
+                        "N:%.2f M:%.2f S:%.3f T:%.3f L:%.3f" % (
+                            stdwave_sigma_count,
+                            mean, std, T,
+                            stdwave_minstd_thresh),
                         (INPUT_WIDTH + 12, height - int(th * 0.35)),
                         cv2.FONT_HERSHEY_SIMPLEX,
-                        0.7 if height < 500 else 2,
+                        fontscale,
                         (0, 0, 0), 2)
             writer.write(img)
         writer.release()

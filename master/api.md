@@ -26,13 +26,13 @@ curl -X POST -H 'Content-Type: application/json' http://82.157.10.200:30048/mast
 - deploy install:
 
 ```
-curl -X POST -H 'Content-Type: application/json' http://82.157.10.200:30048/master/task/eyeai -d '{"uuid": "admin", "do": "deploy.install", "network": "yolor", "weight_url": "https://frepai-1301930378.cos.ap-beijing.myqcloud.com/weights/yolor/v1/best.pt", "replicas":1}'
+curl -X POST -H 'Content-Type: application/json' http://factory.admin.hzcsdata.com/master/task/eyeai -d '{"uuid": "admin", "do": "deploy.install", "network": "yolor", "weight_url": "https://frepai-1301930378.cos.ap-beijing.myqcloud.com/weights/yolor/v1/best.pt", "replicas":1}'
 ```
 
 - deploy uninstall:
 
 ```
-curl -X POST -H 'Content-Type: application/json' http://82.157.10.200:30048/master/task/eyeai -d '{"uuid": "admin", "do": "deploy.uninstall", "network": "yolor"}'
+curl -X POST -H 'Content-Type: application/json' http://factory.admin.hzcsdata.com/master/task/eyeai -d '{"uuid": "admin", "do": "deploy.uninstall", "network": "yolor"}'
 ```
 
 - inference

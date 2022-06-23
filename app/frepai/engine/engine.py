@@ -47,6 +47,7 @@ def _engine_stdwave(pigeon, progress_cb):
     stdwave_sigma_count = pigeon['stdwave_sigma_count']
     stdwave_window_size = pigeon['stdwave_window_size']
     stdwave_distance_size = pigeon['stdwave_distance_size']
+    stdwave_minstd_thresh = pigeon['stdwave_minstd_thresh']
 
     progress_cb(10)
     stdwave_data = np.load(f'{pigeon["cache_path"]}/stdwave_data.npy')
@@ -62,28 +63,35 @@ def _engine_stdwave(pigeon, progress_cb):
     average = np.mean(wdata, axis=-1)
 
     stdwave_data = stdwave_data - average
-
     progress_cb(50)
     mean, std = stdwave_data.mean(), stdwave_data.std()
-    threshold = mean + stdwave_sigma_count * std
-    if stdwave_sigma_count < 0:
-        outliers = np.where(stdwave_data < threshold)[0]
-    else:
-        outliers = np.where(stdwave_data > threshold)[0]
-    progress_cb(80)
-    if len(outliers) == 0:
-        logger.error(threshold)
-        indexes = []
-    else:
-        # indexes = np.where(np.subtract(outliers, np.roll(outliers, 1)) > stdwave_distance_size)[0]
-        dd = np.diff(outliers)
-        indexes = np.where(dd > stdwave_distance_size)[0]
-        indexes = [outliers[0]] + [outliers[i] for i in indexes]
-    if pigeon['devmode']:
+    if std > stdwave_minstd_thresh:
+        threshold = mean + stdwave_sigma_count * std
+        outliers = np.where(stdwave_data < threshold)[0] if stdwave_sigma_count < 0 else np.where(stdwave_data > threshold)[0]
+        pigeon['stdwave_dd'] = sorted(np.diff(outliers).tolist(), reverse=True)[:8]
         pigeon['stdwave_threshold'] = threshold
+
+        progress_cb(80)
+        if len(outliers) == 0:
+            logger.error(threshold)
+            indexes = []
+        else:
+            # indexes = np.where(np.subtract(outliers, np.roll(outliers, 1)) > stdwave_distance_size)[0]
+            # indexes = np.where(dd > stdwave_distance_size)[0]
+            # indexes = [outliers[0]] + [outliers[i + 1] for i in indexes]
+            cursor = outliers[0]
+            indexes = [cursor]
+            for t in outliers:
+                if (t - cursor) > stdwave_distance_size:
+                    indexes.append(t)
+                    cursor = t
+    else:
+        logger.error(f'std[{std}] vs minstd[{stdwave_minstd_thresh}]')
+        indexes = []
+
+    if pigeon['devmode']:
         pigeon['stdwave_mean'] = mean
         pigeon['stdwave_std'] = std
-        pigeon['stdwave_dd'] = sorted(dd.tolist(), reverse=True)[:10]
         np.save(f'{pigeon["cache_path"]}/stdwave_post.npy', np.asarray(stdwave_data))
     progress_cb(90)
     np.save(f'{pigeon["cache_path"]}/stdwave_indexes.npy', np.asarray(indexes))

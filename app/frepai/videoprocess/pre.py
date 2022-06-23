@@ -233,12 +233,15 @@ def video_preprocess(args, progress_cb=None):
         stdwave_feature_select = args.get('stdwave_feature_select', 'std')
         stdwave_sigma_count = args.get('stdwave_sigma_count', -5.0)
         stdwave_window_size = args.get('stdwave_window_size', 50)
-        stdwave_distance_size = args.get('stdwave_distance_size', 50)
+        stdwave_distance_size = args.get('stdwave_distance_size', 150)
+        stdwave_minstd_thresh = args.get('stdwave_minstd_thresh', 0.08)
         stdwave_blur_type = args.get('stdwave_blur_type', 'none')
         stdwave_filter_kernel = args.get('stdwave_filter_kernel', 3)
+        stdwave_noise_kernel = np.ones((stdwave_filter_kernel, stdwave_filter_kernel), np.uint8)
         resdata['stdwave_sigma_count'] = stdwave_sigma_count
         resdata['stdwave_window_size'] = stdwave_window_size
         resdata['stdwave_distance_size'] = stdwave_distance_size
+        resdata['stdwave_minstd_thresh'] = stdwave_minstd_thresh
         logger.info(f'stdwave_tracker: ({stdwave_sigma_count}, {stdwave_window_size}, {stdwave_distance_size})')
 
     stdwave = []
@@ -352,6 +355,9 @@ def video_preprocess(args, progress_cb=None):
                 frame_gray = cv2.medianBlur(frame_gray, stdwave_filter_kernel)
             elif stdwave_blur_type == 'gaussian':
                 frame_gray = cv2.GaussianBlur(frame_gray, (stdwave_filter_kernel, stdwave_filter_kernel), 0)
+            elif stdwave_blur_type == 'open':
+                frame_gray = cv2.morphologyEx(frame_gray, cv2.MORPH_OPEN, stdwave_noise_kernel, iterations=3)
+
             if stdwave_feature_select == 'std':
                 stdwave.append(np.std(frame_gray))
             elif stdwave_feature_select == 'mean':
