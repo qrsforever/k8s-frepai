@@ -11,6 +11,7 @@
 import os
 import time
 import json # noqa
+import shutil
 import subprocess
 from flask import Flask, request
 from flask_cors import CORS
@@ -79,10 +80,13 @@ def _logcat():
     et = request.args.get("et")
     utc = int(time.time())
     try:
-        subprocess.call(['/master/logcat.sh', st, et])
+        # subprocess.call(['/master/logcat.sh', st, et])
+        proc = subprocess.Popen(['/master/logcat.sh', st, et], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        proc.wait()
         if not os.path.exists('/tmp/logs.tar.gz'):
             raise RuntimeError('not create logs')
         ret = _coss3_put('/tmp/logs.tar.gz', prefix_map=['/tmp/logs.tar.gz', f'/logs/{utc}.tar.gz'])
+        shutil.rmtree('/tmp/logs.tar.gz')
         if len(ret) == 1:
             return f"{coss3_domain}/{ret[0]['object']}", 200
     except Exception as err:

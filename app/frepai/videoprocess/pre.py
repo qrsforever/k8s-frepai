@@ -208,7 +208,9 @@ def video_preprocess(args, progress_cb=None):
         rmstill_noise_kernel = np.ones((rmstill_filter_kernel, rmstill_filter_kernel), np.uint8)
 
         if area < SMALL_AREA_THRESH:
-            rmstill_white_thres = int(args.get('rmstill_white_rate', 0) * area)
+            rmstill_white_thres = int(args.get('rmstill_white_rate', 0.05) * area)
+            rmstill_white_window = args.get('rmstill_white_window', 10)
+            rmstill_white_buffer = np.zeros((rmstill_white_window, ))
             frames_invalid = True
 
         logger.info(f'rmstill: ({area}, {rmstill_area_thres}, {rmstill_bin_threshold}, {rmstill_noise_level})')
@@ -249,7 +251,7 @@ def video_preprocess(args, progress_cb=None):
     if devmode:
         binframes, binpoints = [], []
     idx, frame_tmp = 0, np.zeros((h, w), dtype=np.uint8)
-    pre_frame_gray = np.zeros((h, w, 1), dtype=np.uint8)
+    pre_frame_gray = None # np.zeros((h, w, 1), dtype=np.uint8)
 
     ret, frame_bgr = cap.read()
     while ret:
@@ -267,7 +269,8 @@ def video_preprocess(args, progress_cb=None):
                 v = np.array((v - np.mean(v)) / np.std(v) * 32 + 127, dtype=np.uint8)
                 frame_bgr = cv2.cvtColor(cv2.merge([h, s, v]), cv2.COLOR_HSV2BGR)
             frame_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-            frame_tmp = cv2.absdiff(frame_gray, pre_frame_gray)
+            if pre_frame_gray is not None:
+                frame_tmp = cv2.absdiff(frame_gray, pre_frame_gray)
             frame_tmp = cv2.threshold(frame_tmp, rmstill_bin_threshold, 255, cv2.THRESH_BINARY)[1]
             if rmstill_noise_level > 0:
                 # Opening
@@ -293,8 +296,11 @@ def video_preprocess(args, progress_cb=None):
                             binframes.append(cv2.resize(frame_tmp, (INPUT_WIDTH, INPUT_HEIGHT)))
 
             if frames_invalid and keep_flag:
-                if val > rmstill_white_thres:
-                    logger.info(f'val[{val}] vs rmstill_white_thres[{rmstill_white_thres}]')
+                rmstill_white_buffer[-1] = val
+                rmstill_white_buffer = np.roll(rmstill_white_buffer, shift=-1, axis=0)
+                wpoint_mean = np.mean(rmstill_white_buffer)
+                if wpoint_mean > rmstill_white_thres:
+                    logger.info(f'wpoint_mean[{wpoint_mean}] vs rmstill_white_thres[{rmstill_white_thres}], {rmstill_white_window}')
                     frames_invalid = False
             pre_frame_gray = frame_gray
 

@@ -138,7 +138,6 @@ do
     status=$(kubectl get pods -n ${NAMESPACE} -l job-name=${JOBNAME} --no-headers | grep ${JOBNAME} | awk '{print $3}')
     if [[ $status == Running ]] || [[ x$status == x ]]
     then
-        err=0
         exit 0
     elif [[ $status == Pending ]]
     then
