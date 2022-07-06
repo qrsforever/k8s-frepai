@@ -66,14 +66,18 @@ SMALL_AREA_THRESH = 50 * 50
 MIN_AREA_THRESH = 8 * 8
 
 
-def shuffle_tile_input(image):
+def input_tile_shuffle(image):
     indexes = [10, 3, 9, 7, 5, 11, 0, 2, 15, 1, 4, 14, 8, 12, 6, 13]
     tiled_array = image.reshape(4, 28, 4, 28, 3)
     tiled_array = tiled_array.swapaxes(1, 2).reshape((-1, 28, 28, 3))
     tiled_array = np.take(tiled_array, indexes, axis=0)
     vs = []
-    for i in range(4):
-        vs.append(np.hstack(tiled_array[i * 4: (i + 1) * 4]))
+    vs.append(np.hstack([tiled_array[0], np.flip(tiled_array[1], axis=0), np.flip(tiled_array[2], axis=1), 255 - tiled_array[3]]))
+    vs.append(np.hstack([tiled_array[4], np.flip(tiled_array[5], axis=0), 255 - np.flip(tiled_array[6], axis=1), tiled_array[7]]))
+    vs.append(np.hstack([tiled_array[8], 255 - np.flip(tiled_array[9], axis=0), np.flip(tiled_array[10], axis=1), tiled_array[11]]))
+    vs.append(np.hstack([255 - tiled_array[12], np.flip(tiled_array[13], axis=0), np.flip(tiled_array[14], axis=1), tiled_array[15]]))
+    # for i in range(4):
+    #     vs.append(np.hstack(tiled_array[i * 4: (i + 1) * 4]))
     return np.vstack(vs)
 
 
@@ -246,6 +250,8 @@ def video_preprocess(args, progress_cb=None):
         resdata['stdwave_minstd_thresh'] = stdwave_minstd_thresh
         logger.info(f'stdwave_tracker: ({stdwave_sigma_count}, {stdwave_window_size}, {stdwave_distance_size})')
 
+    tile_shuffle = args.get('input_tile_shuffle', False)
+
     stdwave = []
     keepframe, keepidxes = [], []
     if devmode:
@@ -381,6 +387,8 @@ def video_preprocess(args, progress_cb=None):
             if args.angle:
                 M = cv2.getRotationMatrix2D(center=(int(INPUT_WIDTH / 2), int(INPUT_HEIGHT / 2)), angle=args.angle, scale=1.0)
                 frame_rgb = cv2.warpAffine(frame_rgb, M, (INPUT_WIDTH, INPUT_HEIGHT))
+            if tile_shuffle:
+                frame_rgb = input_tile_shuffle(frame_rgb)
             keepframe.append(frame_rgb)
             keepidxes.append(idx)
 
