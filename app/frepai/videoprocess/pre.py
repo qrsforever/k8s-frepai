@@ -62,7 +62,7 @@ upper_gray = np.array([180, 43, 220])
 
 INPUT_WIDTH = 112
 INPUT_HEIGHT = 112
-SMALL_AREA_THRESH = 50 * 50
+SMALL_AREA_THRESH = 150 * 150
 MIN_AREA_THRESH = 8 * 8
 
 
@@ -212,7 +212,7 @@ def video_preprocess(args, progress_cb=None):
         rmstill_noise_kernel = np.ones((rmstill_filter_kernel, rmstill_filter_kernel), np.uint8)
 
         if area < SMALL_AREA_THRESH:
-            rmstill_white_thres = int(args.get('rmstill_white_rate', 0.05) * area)
+            rmstill_white_thres = int(args.get('rmstill_white_rate', 0.1) * area)
             rmstill_white_window = args.get('rmstill_white_window', 10)
             rmstill_white_buffer = np.zeros((rmstill_white_window, ))
             frames_invalid = True
