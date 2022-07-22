@@ -48,21 +48,29 @@ def _post_stdwave(pigeon, args, progress_cb):
     spf = 1 / pigeon['frame_rate']
     all_frames_count = pigeon['frame_count']
     stdwave_indexes = np.load(f'{cache_path}/stdwave_indexes.npy').tolist()
+    SLEN, c = len(stdwave_indexes), 0
     progress_cb(30)
     json_result = {}
     json_result['num_frames'] = all_frames_count
-    frames_info = [{'image_id': '0.jpg', 'at_time': 0, 'cum_counts': 0}]
-    for c, i in enumerate(stdwave_indexes, 1):
-        frames_info.append({
-            'image_id': '%d.jpg' % i,
-            'at_time': round((i + 1) * spf, 3),
-            'cum_counts': c * args.reg_factor
-        })
+    json_result['fps'] = 1
+    frames_info = []
+    if SLEN > 0:
+        for i in range(all_frames_count):
+            if i % pigeon['frame_rate'] == 0:
+                if c < SLEN and i > stdwave_indexes[c]:
+                    c += 1
+                frames_info.append({
+                    'image_id': '%d.jpg' % i,
+                    'at_time': round((i + 1) * spf, 3),
+                    'cum_counts': c * args.reg_factor})
+    else:
+        frames_info = [{'image_id': '0.jpg', 'at_time': 0, 'cum_counts': 0}]
+
     json_result['frames_period'] = frames_info
-    pigeon['sumcnt'] = len(stdwave_indexes)
+    pigeon['sumcnt'] = SLEN
 
     progress_cb(50)
-    if devmode and len(stdwave_indexes) > 0:
+    if devmode and SLEN > 0:
         stdwave_sigma_count = pigeon['stdwave_sigma_count']
         stdwave_window_size = pigeon['stdwave_window_size']
         stdwave_distance_size = pigeon['stdwave_distance_size']
@@ -134,7 +142,7 @@ def _post_stdwave(pigeon, args, progress_cb):
             if focus_box is not None:
                 frame_bgr = frame_bgr[fy1:fy2, fx1:fx2, :]
             if len(stdwave_indexes) > 0 and cap_index >= stdwave_indexes[0]:
-                cur_cnt += args.reg_factor
+                cur_cnt += 1 * args.reg_factor
                 stdwave_indexes.pop(0)
             sum_counts.append(cur_cnt)
             frames.append(cv2.resize(frame_bgr, (INPUT_WIDTH, INPUT_HEIGHT)))
