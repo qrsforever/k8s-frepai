@@ -65,6 +65,8 @@ INPUT_HEIGHT = 112
 SMALL_AREA_THRESH = 150 * 150
 MIN_AREA_THRESH = 8 * 8
 
+debug_data = []
+
 
 def input_tile_shuffle(image):
     indexes = [10, 3, 9, 7, 5, 11, 0, 2, 15, 1, 4, 14, 8, 12, 6, 13]
@@ -131,6 +133,16 @@ def _pre_kstest(args, resdata, progress_cb):
     resdata['kstest_ecdfs_path'] = kstest_ecdfs_path
     progress_cb(100)
     return resdata
+
+
+def gray_image_blur(frame_gray, mode, kernel):
+    if mode == 'averaging':
+        frame_gray = cv2.blur(frame_gray, (kernel, kernel))
+    elif mode == 'median':
+        frame_gray = cv2.medianBlur(frame_gray, kernel)
+    elif mode == 'gaussian':
+        frame_gray = cv2.GaussianBlur(frame_gray, (kernel, kernel), 0)
+    return frame_gray 
 
 
 def video_preprocess(args, progress_cb=None):
@@ -200,6 +212,9 @@ def video_preprocess(args, progress_cb=None):
     area, frames_invalid = w * h, False
     if w < 0 or h < 0 or area < MIN_AREA_THRESH:
         raise HandlerError(80003, f'invalid focus box[{args.focus_box}]!')
+    
+    if 'diffimpulse_tracker_enable' not in args:
+        args.diffimpulse_tracker_enable = False
 
     if args.rmstill_frame_enable:
         area_rate_thres = args.get('rmstill_rate_threshold', 0.001)
@@ -243,16 +258,27 @@ def video_preprocess(args, progress_cb=None):
         stdwave_minstd_thresh = args.get('stdwave_minstd_thresh', 0.08)
         stdwave_blur_type = args.get('stdwave_blur_type', 'none')
         stdwave_filter_kernel = args.get('stdwave_filter_kernel', 3)
-        stdwave_noise_kernel = np.ones((stdwave_filter_kernel, stdwave_filter_kernel), np.uint8)
+        # stdwave_noise_kernel = np.ones((stdwave_filter_kernel, stdwave_filter_kernel), np.uint8)
         resdata['stdwave_sigma_count'] = stdwave_sigma_count
         resdata['stdwave_window_size'] = stdwave_window_size
         resdata['stdwave_distance_size'] = stdwave_distance_size
         resdata['stdwave_minstd_thresh'] = stdwave_minstd_thresh
         logger.info(f'stdwave_tracker: ({stdwave_sigma_count}, {stdwave_window_size}, {stdwave_distance_size})')
 
+    elif args.diffimpulse_tracker_enable:
+        diffimpulse_one_threshold = int(args.get('diffimpulse_rate_threshold', 0.02) * area)
+        diffimpulse_bin_threshold = args.get('diffimpulse_bin_threshold', 20)
+        diffimpulse_window_size = args.get('diffimpulse_window_size', [7, 5])
+        diffimpulse_blur_type = args.get('diffimpulse_blur_type', 'none')
+        diffimpulse_filter_kernel = args.get('diffimpulse_filter_kernel', 3)
+        resdata['diffimpulse_one_threshold'] = diffimpulse_one_threshold
+        resdata['diffimpulse_bin_threshold'] = diffimpulse_bin_threshold
+        resdata['diffimpulse_window_size'] = diffimpulse_window_size 
+        logger.info(f'diff_impulse: ({diffimpulse_one_threshold}, {diffimpulse_bin_threshold}, {diffimpulse_window_size})')
+
     tile_shuffle = args.get('input_tile_shuffle', False)
 
-    stdwave = []
+    stdwave, diffimpulse = [], []
     keepframe, keepidxes = [], []
     if devmode:
         binframes, binpoints = [], []
@@ -361,14 +387,7 @@ def video_preprocess(args, progress_cb=None):
 
         elif args.stdwave_tracker_enable:
             frame_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-            if stdwave_blur_type == 'averaging':
-                frame_gray = cv2.blur(frame_gray, (stdwave_filter_kernel, stdwave_filter_kernel))
-            elif stdwave_blur_type == 'median':
-                frame_gray = cv2.medianBlur(frame_gray, stdwave_filter_kernel)
-            elif stdwave_blur_type == 'gaussian':
-                frame_gray = cv2.GaussianBlur(frame_gray, (stdwave_filter_kernel, stdwave_filter_kernel), 0)
-            elif stdwave_blur_type == 'open':
-                frame_gray = cv2.morphologyEx(frame_gray, cv2.MORPH_OPEN, stdwave_noise_kernel, iterations=3)
+            frame_gray = gray_image_blur(frame_gray, stdwave_blur_type, stdwave_filter_kernel)
 
             if stdwave_feature_select == 'std':
                 stdwave.append(np.std(frame_gray))
@@ -376,6 +395,21 @@ def video_preprocess(args, progress_cb=None):
                 stdwave.append(np.mean(frame_gray))
             else:
                 raise HandlerError(80004, f'unkown stdwave_feature_select args [{stdwave_feature_select}]')
+
+        elif args.diffimpulse_tracker_enable:
+            frame_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+            frame_blur = gray_image_blur(frame_gray, diffimpulse_blur_type, diffimpulse_filter_kernel)
+            if pre_frame_gray is None:
+                pre_frame_gray = frame_blur
+            frame_tmp = cv2.absdiff(frame_blur, pre_frame_gray)
+            cc = np.sum(frame_tmp > diffimpulse_bin_threshold)
+            if devmode:
+                debug_data.append(cc)
+            if cc > diffimpulse_one_threshold:
+                diffimpulse.append(1)
+            else:
+                diffimpulse.append(0)
+            pre_frame_gray = frame_blur
 
         if keep_flag:
             if focus_box is not None:
@@ -399,9 +433,17 @@ def video_preprocess(args, progress_cb=None):
         ret, frame_bgr = cap.read()
     cap.release()
 
+    if devmode and len(debug_data) > 0:
+        logger.info(debug_data)
+
     if args.stdwave_tracker_enable:
         np.save(f'{cache_path}/stdwave_data.npy', np.asarray(stdwave))
         resdata['upload_files'].append('stdwave_data.npy')
+    elif args.diffimpulse_tracker_enable:
+        if devmode:
+            logger.info(diffimpulse)
+        np.save(f'{cache_path}/diffimpulse_data.npy', np.asarray(diffimpulse))
+        resdata['upload_files'].append('diffimpulse_data.npy')
     else:
         logger.info(f'valid frames count: [{len(keepframe)}] cache_path[{cache_path}]')
 

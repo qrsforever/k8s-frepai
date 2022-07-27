@@ -67,7 +67,7 @@ def _post_stdwave(pigeon, args, progress_cb):
         frames_info = [{'image_id': '0.jpg', 'at_time': 0, 'cum_counts': 0}]
 
     json_result['frames_period'] = frames_info
-    pigeon['sumcnt'] = SLEN
+    pigeon['sumcnt'] = frames_info[-1]['cum_counts']
 
     progress_cb(50)
     if devmode and SLEN > 0:
@@ -187,6 +187,165 @@ def _post_stdwave(pigeon, args, progress_cb):
                             stdwave_sigma_count,
                             mean, std, T,
                             stdwave_minstd_thresh),
+                        (INPUT_WIDTH + 12, height - int(th * 0.35)),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        fontscale,
+                        (0, 0, 0), 2)
+            writer.write(img)
+        writer.release()
+        progress_cb(90)
+        os.system(f'ffmpeg -an -i {tmp_video_file} {ffmpeg_args} {cache_path}/target-stride.mp4 2>/dev/null')
+        pigeon['upload_files'].append('target-stride.mp4')
+        pigeon['stride_mp4'] = f'{coss3_domain}{coss3_path}/target-stride.mp4'
+        json_result['stride_mp4'] = pigeon['stride_mp4']
+
+    progress_cb(95)
+    with open(f'{cache_path}/result.json', 'w') as fw:
+        json.dump(json_result, fw, indent=4)
+    pigeon['upload_files'].append('result.json')
+    pigeon['target_json'] = f'{coss3_domain}{coss3_path}/result.json'
+
+    progress_cb(96)
+    return pigeon
+
+
+def _post_diffimpulse(pigeon, args, progress_cb):
+    devmode, cache_path, coss3_path = pigeon['devmode'], pigeon['cache_path'], pigeon['coss3_path']
+    progress_cb(10)
+    spf = 1 / pigeon['frame_rate']
+    all_frames_count = pigeon['frame_count']
+    diffimpulse_indexes = np.load(f'{cache_path}/diffimpulse_indexes.npy').tolist()
+    SLEN, c = len(diffimpulse_indexes), 0
+    progress_cb(30)
+    json_result = {}
+    json_result['num_frames'] = all_frames_count
+    json_result['fps'] = 1
+    frames_info = []
+    if SLEN > 0:
+        for i in range(all_frames_count):
+            if i % pigeon['frame_rate'] == 0:
+                if c < SLEN and i > diffimpulse_indexes[c]:
+                    c += 1
+                frames_info.append({
+                    'image_id': '%d.jpg' % i,
+                    'at_time': round((i + 1) * spf, 3),
+                    'cum_counts': c * args.reg_factor})
+    else:
+        frames_info = [{'image_id': '0.jpg', 'at_time': 0, 'cum_counts': 0}]
+
+    json_result['frames_period'] = frames_info
+    pigeon['sumcnt'] = frames_info[-1]['cum_counts']
+
+    progress_cb(50)
+    if devmode and SLEN > 0:
+        diffimpulse_one_threshold = pigeon['diffimpulse_one_threshold']
+        diffimpulse_bin_threshold = pigeon['diffimpulse_bin_threshold']
+        thresh_zero, thresh_one = pigeon['diffimpulse_window_size']
+        diffimpulse_0_1 = np.load(f'{cache_path}/diffimpulse_0_1.npy')
+        one_cnt_list = np.load(f'{pigeon["cache_path"]}/diffimpulse_cnt_1.npy').tolist()
+        one_cnt_list = [x for x in one_cnt_list if x > 3 and x < 30]
+
+        N = len(diffimpulse_0_1)
+        fig = plt.figure(figsize=(48, 8))
+        plt.xlim(0, N)
+        plt.scatter(range(N), diffimpulse_0_1)
+        progress_cb(60)
+
+        with io.BytesIO() as buff:
+            fig.savefig(buff, format='raw')
+            buff.seek(0)
+            image = np.frombuffer(buff.getvalue(), dtype=np.uint8)
+        imgw, imgh = fig.canvas.get_width_height()
+        imgw, imgh = int(imgw), int(imgh)
+        image = image.reshape((imgh, imgw, -1))
+        image = cv2.cvtColor(image, cv2.COLOR_RGBA2BGR)
+
+        cv2.imwrite(f'{cache_path}/diffimpulse.jpg', image)
+        pigeon['upload_files'].append('diffimpulse.jpg')
+        pigeon['diffimpulse_image'] = f'{coss3_domain}{coss3_path}/diffimpulse.jpg'
+
+        tmp_video_file = f'{cache_path}/_diffimpulse.mp4'
+        progress_cb(65)
+
+        cap = cv2.VideoCapture(f'{cache_path}/source.mp4')
+        if not cap.isOpened():
+            raise HandlerError(83011, f'open video [{cache_path}/source.mp4] err!')
+
+        fps = round(cap.get(cv2.CAP_PROP_FPS))
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        focus_box = get_rect_points(width, height, args.focus_box)
+        black_box = get_rect_points(width, height, args.black_box)
+        if black_box is not None:
+            bx1, by1, bx2, by2 = black_box
+        if focus_box is not None:
+            fx1, fy1, fx2, fy2 = focus_box
+
+        image = cv2.resize(image, (int(height * imgw / imgh), height), interpolation=cv2.INTER_LINEAR)
+        window = width # int(0.3 * image.shape[1])
+
+        fontscale = 0.7 if height < 500 else 2
+
+        frames, sum_counts = [], []
+        frames_indexes = np.sort(np.random.choice(all_frames_count, image.shape[1], replace=False))
+        cap_index, cur_cnt = -1, 0
+        while len(frames) < image.shape[1]:
+            success, frame_bgr = cap.read()
+            if not success:
+                break
+            cap_index += 1
+            if cap_index != frames_indexes[len(frames)]:
+                continue
+            if black_box is not None:
+                frame_bgr[by1:by2, bx1:bx2, :] = 0
+            if focus_box is not None:
+                frame_bgr = frame_bgr[fy1:fy2, fx1:fx2, :]
+            if len(diffimpulse_indexes) > 0 and cap_index >= diffimpulse_indexes[0]:
+                cur_cnt += 1 * args.reg_factor
+                diffimpulse_indexes.pop(0)
+            sum_counts.append(cur_cnt)
+            frames.append(cv2.resize(frame_bgr, (INPUT_WIDTH, INPUT_HEIGHT)))
+        cap.release()
+
+        progress_cb(70)
+        wfps = 2 * fps
+        writer = cv2.VideoWriter(tmp_video_file, cv2.VideoWriter_fourcc(*'mp4v'), wfps, (width, height))
+
+        F = len(frames)
+        fig = plt.figure(figsize=(10, 8))
+        plt.hist(one_cnt_list)
+        with io.BytesIO() as buff:
+            fig.savefig(buff, format='raw')
+            buff.seek(0)
+            bimg = np.frombuffer(buff.getvalue(), dtype=np.uint8)
+
+        bimg = bimg.reshape(fig.canvas.get_width_height()[::-1] + (-1,))
+        bimg = cv2.cvtColor(bimg,cv2.COLOR_RGB2BGR)
+        bimg = cv2.resize(bimg, (window, height), interpolation=cv2.INTER_LINEAR)
+        bimage = np.hstack([image, bimg])
+        logger.info(f'bimage shape: {bimage.shape} F: {F}')
+
+        th = int(0.08 * height)
+        for i in range(image.shape[1]):
+            if (i + 1) % 211 == 0:
+                progress_cb(70 + 19 * i / image.shape[1])
+            img = bimage[:, i:i + window]
+            img = cv2.resize(img, (width, height))
+            if i < F:
+                img[height - INPUT_HEIGHT - 5:height - 5, 5:INPUT_WIDTH + 5, :] = frames[i] # [:,:,::-1]
+                cv2.putText(img,
+                        '%dX%d %.1f F: %d C:%.1f/%.1f' % (
+                            width, height, wfps, F,
+                            sum_counts[i], sum_counts[-1]),
+                        (2, int(0.06 * height)),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        fontscale,
+                        (0, 0, 0), 2)
+                cv2.putText(img,
+                        "A:%d B:%d Z:%d O:%d" % (
+                            diffimpulse_one_threshold,
+                            diffimpulse_bin_threshold,
+                            thresh_zero, thresh_one),
                         (INPUT_WIDTH + 12, height - int(th * 0.35)),
                         cv2.FONT_HERSHEY_SIMPLEX,
                         fontscale,
@@ -490,8 +649,10 @@ def video_postprocess(pigeon, progress_cb=None):
     with open(f'{cache_path}/config.json', 'r') as fr:
         args = DotDict(json.load(fr))
 
-    if 'stdwave_sigma_count' in pigeon:
+    if 'stdwave_window_size' in pigeon:
         pigeon = _post_stdwave(pigeon, args, _send_progress)
+    elif 'diffimpulse_window_size' in pigeon:
+        pigeon = _post_diffimpulse(pigeon, args, _send_progress)
     else:
         pigeon = _post_repnet(pigeon, args, _send_progress)
 

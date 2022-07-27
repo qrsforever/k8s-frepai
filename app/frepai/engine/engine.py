@@ -100,6 +100,61 @@ def _engine_stdwave(pigeon, progress_cb):
     return pigeon
 
 
+def _engine_diffimpulse(pigeon, progress_cb):
+    dev = pigeon['devmode']
+    diffimpulse_window_size = pigeon['diffimpulse_window_size']
+    progress_cb(10)
+    diffimpulse_data = np.load(f'{pigeon["cache_path"]}/diffimpulse_data.npy')
+
+    indexes = []
+    thresh_zero, thresh_one = diffimpulse_window_size
+    rec_zero, rec_one = 0, 0
+    if dev:
+        impulse_0_1 = np.array([0] * len(diffimpulse_data))
+        if diffimpulse_data[0] == 0:
+            zero_cnt_list, one_cnt_list = [0], []
+        else:
+            zero_cnt_list, one_cnt_list = [], [0]
+    for i, d in enumerate(diffimpulse_data):
+        if d == 0:
+            rec_zero += 1
+            if dev:
+                if zero_cnt_list[-1] == 0:
+                    one_cnt_list.append(0)
+                zero_cnt_list[-1] += 1
+            if rec_one > 0:
+                if rec_one < thresh_one:
+                    rec_one = 0
+                else:
+                    if rec_zero > thresh_zero:
+                        if dev:
+                            impulse_0_1[i - rec_zero - rec_one: i - rec_zero] = 1
+                        indexes.append(i - rec_zero)
+                        rec_one = 0
+        else:
+            rec_one += 1
+            if dev:
+                if one_cnt_list[-1] == 0:
+                    zero_cnt_list.append(0)
+                one_cnt_list[-1] += 1
+            if rec_zero > 0:
+                if rec_zero < thresh_zero:
+                    rec_zero = 0
+                else:
+                    if rec_one > thresh_one:
+                        rec_zero = 0
+
+    progress_cb(70)
+    np.save(f'{pigeon["cache_path"]}/diffimpulse_indexes.npy', np.asarray(indexes))
+    if dev:
+        np.save(f'{pigeon["cache_path"]}/diffimpulse_cnt_0.npy', np.asarray(zero_cnt_list))
+        np.save(f'{pigeon["cache_path"]}/diffimpulse_cnt_1.npy', np.asarray(one_cnt_list))
+        np.save(f'{pigeon["cache_path"]}/diffimpulse_0_1.npy', np.asarray(impulse_0_1))
+    logger.info(pigeon)
+    progress_cb(100)
+    return pigeon
+
+
 def engine_process(pigeon, progress_cb=None):
     if 'cache_path' not in pigeon:
         raise HandlerError(82001, 'not found cache_path')
@@ -123,8 +178,11 @@ def engine_process(pigeon, progress_cb=None):
     if 'kstest_ecdfs_path' in pigeon:
         return _engine_kstest(pigeon, _send_progress)
 
-    if 'stdwave_sigma_count' in pigeon:
+    if 'stdwave_window_size' in pigeon:
         return _engine_stdwave(pigeon, _send_progress)
+
+    if 'diffimpulse_window_size' in pigeon:
+        return _engine_diffimpulse(pigeon, _send_progress)
 
     with open(f'{cache_path}/config.json', 'r') as fr:
         args = DotDict(json.load(fr))
