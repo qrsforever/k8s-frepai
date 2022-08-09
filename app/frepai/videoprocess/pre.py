@@ -65,8 +65,6 @@ INPUT_HEIGHT = 112
 SMALL_AREA_THRESH = 150 * 150
 MIN_AREA_THRESH = 8 * 8
 
-debug_data = []
-
 
 def input_tile_shuffle(image):
     indexes = [10, 3, 9, 7, 5, 11, 0, 2, 15, 1, 4, 14, 8, 12, 6, 13]
@@ -154,6 +152,7 @@ def video_preprocess(args, progress_cb=None):
     devmode = (args.save_video or args.best_stride_video)
 
     # logger.info(args)
+    debug_data = []
 
     resdata = {'errno': 0, 'pigeon': args.pigeon, 'devmode': devmode, 'task': 'pre', 'upload_files': []}
 
