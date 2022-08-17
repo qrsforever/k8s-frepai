@@ -24,9 +24,9 @@ from frepai.utils.draw import get_rect_points
 from frepai.utils.logger import EasyLogger as logger
 from frepai.utils.errcodes import HandlerError
 from frepai.utils import mkdir_p, rmdir_p, easy_wget
+from scipy import stats
 
-# 331 32 56
-# 352 61 70
+ffmpeg_args = '-preset ultrafast -vcodec libx264 -pix_fmt yuv420p'
 
 lower_red_1 = np.array([0, 43, 46])
 upper_red_1 = np.array([10, 255, 255])
@@ -149,7 +149,7 @@ def video_preprocess(args, progress_cb=None):
 
     args = DotDict(args)
 
-    devmode = (args.save_video or args.best_stride_video)
+    devmode = args.best_stride_video
 
     # logger.info(args)
     debug_data = []
@@ -215,6 +215,12 @@ def video_preprocess(args, progress_cb=None):
     if 'diffimpulse_tracker_enable' not in args:
         args.diffimpulse_tracker_enable = False
 
+    debug_write_video = False
+    if 'debug_pre_write_video' in args:
+        debug_write_video = args['debug_pre_write_video']
+    if debug_write_video:
+        writer = cv2.VideoWriter(f'{cache_path}/_pre_video.mp4', cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
+
     if args.rmstill_frame_enable:
         area_rate_thres = args.get('rmstill_rate_threshold', 0.001)
         rmstill_bin_threshold = args.get('rmstill_bin_threshold', 20)
@@ -251,6 +257,8 @@ def video_preprocess(args, progress_cb=None):
 
     elif args.stdwave_tracker_enable:
         stdwave_feature_select = args.get('stdwave_feature_select', 'std')
+        stdwave_bg_window = args.get('stdwave_bg_window', int(fps * 5))
+        stdwave_hdiff_rate = args.get('stdwave_hdiff_rate', 1.0)
         stdwave_sigma_count = args.get('stdwave_sigma_count', -5.0)
         stdwave_window_size = args.get('stdwave_window_size', 50)
         stdwave_distance_size = args.get('stdwave_distance_size', 150)
@@ -262,6 +270,11 @@ def video_preprocess(args, progress_cb=None):
         resdata['stdwave_window_size'] = stdwave_window_size
         resdata['stdwave_distance_size'] = stdwave_distance_size
         resdata['stdwave_minstd_thresh'] = stdwave_minstd_thresh
+        resdata['stdwave_bg_window'] = stdwave_bg_window
+
+        if stdwave_bg_window > 0:
+            stdwave_bgw_buffer = [(0, None)] * stdwave_bg_window
+
         logger.info(f'stdwave_tracker: ({stdwave_sigma_count}, {stdwave_window_size}, {stdwave_distance_size})')
 
     elif args.diffimpulse_tracker_enable:
@@ -284,13 +297,15 @@ def video_preprocess(args, progress_cb=None):
     idx, frame_tmp = 0, np.zeros((h, w), dtype=np.uint8)
     pre_frame_gray = None # np.zeros((h, w, 1), dtype=np.uint8)
 
-    ret, frame_bgr = cap.read()
+    ret, frame_raw = cap.read()
     while ret:
         keep_flag = False
         if black_box is not None:
-            frame_bgr[black_y1:black_y2, black_x1:black_x2, :] = 0
+            frame_raw[black_y1:black_y2, black_x1:black_x2, :] = 0
         if focus_box is not None:
-            frame_bgr = frame_bgr[focus_y1:focus_y2, focus_x1:focus_x2, :]
+            frame_bgr = frame_raw[focus_y1:focus_y2, focus_x1:focus_x2, :]
+        else:
+            frame_bgr = frame_raw
 
         # frame_bgr = cv2.fastNlMeansDenoisingColored(frame_bgr,None, 10, 10, 7, 21)
 
@@ -387,13 +402,38 @@ def video_preprocess(args, progress_cb=None):
         elif args.stdwave_tracker_enable:
             frame_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
             frame_gray = gray_image_blur(frame_gray, stdwave_blur_type, stdwave_filter_kernel)
+            if pre_frame_gray is None:
+                pre_frame_gray = frame_gray
 
+            frame_tmp = cv2.absdiff(frame_gray, pre_frame_gray)
+            feat = np.sort(frame_tmp.ravel())
+            feat = feat[int(-1 * stdwave_hdiff_rate * len(feat)):]
             if stdwave_feature_select == 'std':
-                stdwave.append(np.std(frame_gray))
+                feat = int(np.std(feat))
             elif stdwave_feature_select == 'mean':
-                stdwave.append(np.mean(frame_gray))
+                feat = int(np.mean(feat))
             else:
                 raise HandlerError(80004, f'unkown stdwave_feature_select args [{stdwave_feature_select}]')
+
+            stdwave.append(feat)
+            if stdwave_bg_window > 0:
+                stdwave_bgw_buffer[idx % stdwave_bg_window] = (feat, frame_gray)
+                if idx > stdwave_bg_window:
+                    mode = stats.mode(stdwave[-1 * stdwave_bg_window:])[0][0]
+                    for feat, frame in stdwave_bgw_buffer:
+                        if feat == mode:
+                            pre_frame_gray = frame
+                            break
+
+            if debug_write_video: # debug
+                if len(stdwave) < 500:
+                    writer.write(frame_raw)
+                if len(stdwave) == 500:
+                    logger.info(f'{frame_bgr.shape} {frame_raw.shape}')
+                    writer.release()
+                    logger.info(f'{np.array(stdwave, np.int16)}')
+                    os.system(f'ffmpeg -an -i {cache_path}/_pre_video.mp4 {ffmpeg_args} {cache_path}/pre-video.mp4 2>/dev/null')
+                    resdata['upload_files'].append('pre-video.mp4')
 
         elif args.diffimpulse_tracker_enable:
             frame_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
@@ -429,7 +469,7 @@ def video_preprocess(args, progress_cb=None):
             _send_progress(100 * idx / cnt)
 
         idx += 1
-        ret, frame_bgr = cap.read()
+        ret, frame_raw = cap.read()
     cap.release()
 
     if devmode and len(debug_data) > 0:

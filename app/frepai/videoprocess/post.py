@@ -71,6 +71,15 @@ def _post_stdwave(pigeon, args, progress_cb):
 
     progress_cb(50)
     if devmode and SLEN > 0:
+        cap = cv2.VideoCapture(f'{cache_path}/source.mp4')
+        if not cap.isOpened():
+            raise HandlerError(83011, f'open video [{cache_path}/source.mp4] err!')
+
+        fps = round(cap.get(cv2.CAP_PROP_FPS))
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+        stdwave_bg_window = pigeon['stdwave_bg_window']
         stdwave_sigma_count = pigeon['stdwave_sigma_count']
         stdwave_window_size = pigeon['stdwave_window_size']
         stdwave_distance_size = pigeon['stdwave_distance_size']
@@ -81,7 +90,7 @@ def _post_stdwave(pigeon, args, progress_cb):
         stdwave_data = np.load(f'{cache_path}/stdwave_data.npy')
         stdwave_post = np.load(f'{cache_path}/stdwave_post.npy')
         N, T = len(stdwave_data), pigeon['stdwave_threshold']
-        fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(48, 8), sharex=True, tight_layout=False)
+        fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(120, 8), sharex=True, tight_layout=False)
         plt.subplots_adjust(left=0, bottom=0, right=1, top=1, hspace=0, wspace=0)
         plt.xlim(0, N)
         axes[0].scatter(range(N), stdwave_post)
@@ -108,13 +117,6 @@ def _post_stdwave(pigeon, args, progress_cb):
 
         progress_cb(65)
 
-        cap = cv2.VideoCapture(f'{cache_path}/source.mp4')
-        if not cap.isOpened():
-            raise HandlerError(83011, f'open video [{cache_path}/source.mp4] err!')
-
-        fps = round(cap.get(cv2.CAP_PROP_FPS))
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         focus_box = get_rect_points(width, height, args.focus_box)
         black_box = get_rect_points(width, height, args.black_box)
         if black_box is not None:
@@ -149,7 +151,7 @@ def _post_stdwave(pigeon, args, progress_cb):
         cap.release()
 
         progress_cb(70)
-        wfps = 2 * fps
+        wfps = fps
         writer = cv2.VideoWriter(tmp_video_file, cv2.VideoWriter_fourcc(*'mp4v'), wfps, (width, height))
 
         F = len(frames)
@@ -183,7 +185,8 @@ def _post_stdwave(pigeon, args, progress_cb):
                         fontscale,
                         (0, 0, 0), 2)
                 cv2.putText(img,
-                        "N:%.2f M:%.2f S:%.3f T:%.3f L:%.3f" % (
+                        "B: %d N:%.2f M:%.2f S:%.3f T:%.3f L:%.3f" % (
+                            stdwave_bg_window,
                             stdwave_sigma_count,
                             mean, std, T,
                             stdwave_minstd_thresh),
@@ -308,7 +311,7 @@ def _post_diffimpulse(pigeon, args, progress_cb):
         cap.release()
 
         progress_cb(70)
-        wfps = 2 * fps
+        wfps = fps
         writer = cv2.VideoWriter(tmp_video_file, cv2.VideoWriter_fourcc(*'mp4v'), wfps, (width, height))
 
         F = len(frames)
