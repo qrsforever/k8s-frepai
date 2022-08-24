@@ -44,6 +44,7 @@ def _engine_kstest(pigeon, progress_cb):
 
 
 def _engine_stdwave(pigeon, progress_cb):
+    stdwave_sub_average = pigeon['stdwave_sub_average']
     stdwave_sigma_count = pigeon['stdwave_sigma_count']
     stdwave_window_size = pigeon['stdwave_window_size']
     stdwave_distance_size = pigeon['stdwave_distance_size']
@@ -51,20 +52,21 @@ def _engine_stdwave(pigeon, progress_cb):
 
     progress_cb(10)
     stdwave_data = np.load(f'{pigeon["cache_path"]}/stdwave_data.npy')
+    if stdwave_sub_average:
+        pad_r_size = (stdwave_window_size - 1) // 2
+        pad_l_size = stdwave_window_size - 1 - pad_r_size
 
-    pad_r_size = (stdwave_window_size - 1) // 2
-    pad_l_size = stdwave_window_size - 1 - pad_r_size
+        # average = np.convolve(stdwave_data, np.ones(stdwave_window_size), 'valid') / stdwave_window_size
+        # average = [average[0]] * pad_l_size + average.tolist() + [average[-1]] * pad_r_size
 
-    # average = np.convolve(stdwave_data, np.ones(stdwave_window_size), 'valid') / stdwave_window_size
-    # average = [average[0]] * pad_l_size + average.tolist() + [average[-1]] * pad_r_size
+        pdata = np.pad(stdwave_data, (pad_r_size, pad_l_size), mode='reflect')
+        wdata = np.lib.stride_tricks.sliding_window_view(pdata, stdwave_window_size)
+        average = np.mean(wdata, axis=-1)
 
-    pdata = np.pad(stdwave_data, (pad_r_size, pad_l_size), mode='reflect')
-    wdata = np.lib.stride_tricks.sliding_window_view(pdata, stdwave_window_size)
-    average = np.mean(wdata, axis=-1)
-
-    stdwave_data = stdwave_data - average
+        stdwave_data = stdwave_data - average
     progress_cb(50)
     mean, std = stdwave_data.mean(), stdwave_data.std()
+    logger.info(f'mean: {mean}, std: {std}')
     if std > stdwave_minstd_thresh:
         threshold = mean + stdwave_sigma_count * std
         outliers = np.where(stdwave_data < threshold)[0] if stdwave_sigma_count < 0 else np.where(stdwave_data > threshold)[0]

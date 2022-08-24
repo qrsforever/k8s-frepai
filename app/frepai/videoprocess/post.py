@@ -96,9 +96,10 @@ def _post_stdwave(pigeon, args, progress_cb):
         axes[0].scatter(range(N), stdwave_post)
         axes[0].axhline(y=T, color='r', marker='o', linestyle='-', linewidth=5)
         axes[0].axhline(y=mean, color='g', marker='o', linestyle='-', linewidth=5)
-        for i in range(0, N - stdwave_distance_size, 2800):
-            axes[0].plot((i, i + stdwave_window_size), (T, T), 'bo-', linewidth=15)
-            axes[0].plot((i, i + stdwave_distance_size), (mean, mean), 'bo-', linewidth=15)
+        axes[0].axhline(y=std, color='b', marker='o', linestyle='-', linewidth=5)
+        for i in range(0, N - stdwave_distance_size, 1800):
+            axes[0].plot((i, i + stdwave_window_size), (T, T), 'bo-', linewidth=10)
+            axes[0].plot((i, i + stdwave_distance_size), (mean, mean), 'bo-', linewidth=10)
         axes[1].scatter(range(N), stdwave_data)
         progress_cb(60)
 
@@ -185,10 +186,10 @@ def _post_stdwave(pigeon, args, progress_cb):
                         fontscale,
                         (0, 0, 0), 2)
                 cv2.putText(img,
-                        "B: %d N:%.2f M:%.2f S:%.3f T:%.3f L:%.3f" % (
+                        "B: %d N:%.2f S:%.3f T:%.2f L:%.2f" % (
                             stdwave_bg_window,
                             stdwave_sigma_count,
-                            mean, std, T,
+                            std, T,
                             stdwave_minstd_thresh),
                         (INPUT_WIDTH + 12, height - int(th * 0.35)),
                         cv2.FONT_HERSHEY_SIMPLEX,
