@@ -284,7 +284,9 @@ def video_preprocess(args, progress_cb=None):
         _prominence = args.get('featpeak_prominence_minmax', (10, -1))
 
         resdata['featpeak_detect_trough'] = args.get('featpeak_detect_trough', False)
+        resdata['featpeak_data_normal'] = args.get('featpeak_data_normal', True)
         resdata['featpeak_window_size'] = args.get('featpeak_window_size', 10)
+        resdata['featpeak_min_threshold'] = args.get('featpeak_min_threshold', -1)
         resdata['featpeak_distance_size'] = args.get('featpeak_distance_size', 10)
         resdata['featpeak_relative_height'] = args.get('featpeak_relative_height', 0.8)
         resdata['featpeak_height_minmax'] = (_height, -1) if isinstance(_height, int) else _height

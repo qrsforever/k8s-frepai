@@ -25,6 +25,36 @@ model = None
 
 
 ##################################################################
+## common
+##################################################################
+
+
+def _features_sliding_window(data, window_size, method):# {{{
+    pad_r_size = (window_size - 1) // 2
+    pad_l_size = window_size - 1 - pad_r_size
+
+    # average = np.convolve(stdwave_data, np.ones(stdwave_window_size), 'valid') / stdwave_window_size
+    # average = [average[0]] * pad_l_size + average.tolist() + [average[-1]] * pad_r_size
+
+    pdata = np.pad(data, (pad_r_size, pad_l_size), mode='reflect')
+    wdata = np.lib.stride_tricks.sliding_window_view(pdata, window_size)
+    if method == 'min':
+        data = data - np.min(wdata, axis=-1)
+    if method == 'minmax':
+        minvals = np.min(wdata, axis=-1)
+        maxvals = np.max(wdata, axis=-1)
+        data = (data - minvals) / (maxvals - minvals)
+    elif method == 'mean':
+        data = data - np.mean(wdata, axis=-1)
+    elif method == 'standard':
+        mean = np.mean(wdata, axis=-1)
+        std = np.std(wdata, axis=-1)
+        data = (data - mean) / std
+
+    return data # }}}
+
+
+##################################################################
 ## kstest
 ##################################################################
 
@@ -70,10 +100,10 @@ def _local_maxima(x):# {{{
     return np.array(midpoints)
 
 
-def _find_peaks(peaks_values, height=(), distance=-1, prominence=(), width=(), wlen=-1, rel_height=0.5):
-    # peaks_values = np.array(peaks_values)
+def _find_peaks(peaks_values, height=(), distance=-1, prominence=(), width=(), wlen=-1, rel_height=0.5, min_thresh=-1):
+    SS = [-1] * 5
     peaks_indices = _local_maxima(peaks_values)
-    SS = [len(peaks_indices)] * 5
+    SS[0] = len(peaks_indices)
 
     if isinstance(height, (int, float)):
         height = (height, -1)
@@ -114,6 +144,7 @@ def _find_peaks(peaks_values, height=(), distance=-1, prominence=(), width=(), w
                 keep[k] = False
                 k += 1
         peaks_indices = peaks_indices[keep]
+        props = {key: array[keep] for key, array in props.items()}
         SS[2] = len(peaks_indices)
 
     if len(prominence) == 2 or len(width) == 2:
@@ -135,6 +166,8 @@ def _find_peaks(peaks_values, height=(), distance=-1, prominence=(), width=(), w
                 if peaks_values[i] < left_min:
                     left_min = peaks_values[i]
                     left_bases[idx] = i
+                    if left_min < min_thresh:
+                        break
                 i -= 1
             i = right_bases[idx] = peak
             right_min = peaks_values[peak]
@@ -142,6 +175,8 @@ def _find_peaks(peaks_values, height=(), distance=-1, prominence=(), width=(), w
                 if peaks_values[i] < right_min:
                     right_min = peaks_values[i]
                     right_bases[idx] = i
+                    if right_min < min_thresh:
+                        break
                 i += 1
             prominences[idx] = peaks_values[peak] - max(left_min, right_min)
 
@@ -195,30 +230,37 @@ def _find_peaks(peaks_values, height=(), distance=-1, prominence=(), width=(), w
             SS[4] = len(peaks_indices)
 
     logger.info(f'peaks_indices: {SS}')
+    props['ss'] = SS
     return peaks_indices, props
 
 
 def _engine_featpeak(pigeon, progress_cb):
     devmode = pigeon['devmode']
     featpeak_window_size = pigeon['featpeak_window_size']
+    featpeak_data_normal = pigeon['featpeak_data_normal']
     featpeak_distance_size = pigeon['featpeak_distance_size']
+    featpeak_min_threshold = pigeon['featpeak_min_threshold']
     featpeak_relative_height = pigeon['featpeak_relative_height']
     featpeak_height_minmax = pigeon['featpeak_height_minmax']
     featpeak_width_minmax = pigeon['featpeak_width_minmax']
     featpeak_prominence_minmax = pigeon['featpeak_prominence_minmax']
 
     progress_cb(10)
-
     featpeak_data = np.load(f'{pigeon["cache_path"]}/featpeak_data.npy')
+    if featpeak_data_normal:
+        featpeak_data = _features_sliding_window(featpeak_data, featpeak_width_minmax[0], 'min')
+
+    progress_cb(30)
     peaks_indices, properties = _find_peaks(featpeak_data,
             featpeak_height_minmax, featpeak_distance_size, featpeak_prominence_minmax,
-            featpeak_width_minmax, featpeak_window_size, featpeak_relative_height)
+            featpeak_width_minmax, featpeak_window_size, featpeak_relative_height, featpeak_min_threshold)
 
     progress_cb(70)
-
+    if devmode and featpeak_data_normal:
+        np.save(f'{pigeon["cache_path"]}/featpeak_post.npy', np.asarray(featpeak_data))
     np.save(f'{pigeon["cache_path"]}/featpeak_indexes.npy', np.asarray(peaks_indices))
     if devmode:
-        with open(f'{pigeon["cache_path"]}/featpeak_post.pkl', 'wb') as fw:
+        with open(f'{pigeon["cache_path"]}/featpeak_props.pkl', 'wb') as fw:
             pickle.dump(properties, fw)
 
     progress_cb(100)
@@ -241,17 +283,7 @@ def _engine_stdwave(pigeon, progress_cb):# {{{
     progress_cb(10)
     stdwave_data = np.load(f'{pigeon["cache_path"]}/stdwave_data.npy')
     if stdwave_sub_average:
-        pad_r_size = (stdwave_window_size - 1) // 2
-        pad_l_size = stdwave_window_size - 1 - pad_r_size
-
-        # average = np.convolve(stdwave_data, np.ones(stdwave_window_size), 'valid') / stdwave_window_size
-        # average = [average[0]] * pad_l_size + average.tolist() + [average[-1]] * pad_r_size
-
-        pdata = np.pad(stdwave_data, (pad_r_size, pad_l_size), mode='reflect')
-        wdata = np.lib.stride_tricks.sliding_window_view(pdata, stdwave_window_size)
-        average = np.mean(wdata, axis=-1)
-
-        stdwave_data = stdwave_data - average
+        stdwave_data = _features_sliding_window(stdwave_data, stdwave_window_size, 'mean')
         if devmode:
             logger.info(np.round(stdwave_data, 3).tolist())
     progress_cb(50)

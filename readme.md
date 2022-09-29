@@ -29,7 +29,9 @@
 
     "featpeak_detect_trough": false,
     "featpeak_window_size": 15,
+    "featpeak_data_normal": true,
     "featpeak_distance_size": 10,
+    "featpeak_min_threshold": -1,
     "featpeak_relative_height": 0.9,
     "featpeak_height_minmax": [-1, -1],
     "featpeak_width_minmax": [-1, -1],

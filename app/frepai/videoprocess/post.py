@@ -110,55 +110,65 @@ def _post_featpeak(pigeon, args, progress_cb):# {{{
 
     if devmode and SLEN > 0:
         featpeak_window_size = pigeon['featpeak_window_size']
+        featpeak_data_normal = pigeon['featpeak_data_normal']
         featpeak_distance_size = pigeon['featpeak_distance_size']
+        featpeak_min_threshold = pigeon['featpeak_min_threshold']
         featpeak_relative_height = pigeon['featpeak_relative_height']
         featpeak_height_minmax = pigeon['featpeak_height_minmax']
         featpeak_width_minmax = pigeon['featpeak_width_minmax']
         featpeak_prominence_minmax = pigeon['featpeak_prominence_minmax']
-        
+
         featpeak_data = np.load(f'{cache_path}/featpeak_data.npy')
-        with open(f'{cache_path}/featpeak_post.pkl', 'rb') as fr:
-            featpeak_post = pickle.load(fr)
+        if featpeak_data_normal:
+            featpeak_post = np.load(f'{cache_path}/featpeak_post.npy')
+        else:
+            featpeak_post = featpeak_data
+        with open(f'{cache_path}/featpeak_props.pkl', 'rb') as fr:
+            featpeak_props = pickle.load(fr)
 
         progress_cb(35)
 
-        widths, prominences, half_wlen = None, None, 0
+        widths, prominences, half_wlen, ss = None, None, 0, featpeak_props['ss']
         if featpeak_window_size > 2:
             half_wlen = featpeak_window_size // 2
-        if 'prominences' in featpeak_post:
-            prominences = featpeak_post['prominences']
-        if 'widths' in featpeak_post:
-            widths = featpeak_post['widths']
-            width_heights = featpeak_post['width_heights']
-            left_ips = featpeak_post['left_ips']
-            right_ips = featpeak_post['right_ips']
-        N, M = len(featpeak_data), 1500
+        if 'prominences' in featpeak_props:
+            prominences = featpeak_props['prominences']
+        if 'widths' in featpeak_props:
+            widths = featpeak_props['widths']
+            width_heights = featpeak_props['width_heights']
+            left_ips = featpeak_props['left_ips']
+            right_ips = featpeak_props['right_ips']
+        N, M = len(featpeak_post), 1500
         images = []
         for i in range(0, N, M):
-            xs = range(i, i + M)
-            ys = featpeak_data[i:i + M]
+            ys = featpeak_post[i:i + M]
+            mm = i + len(ys)
+            xs = range(i, mm)
             fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(120, 8), sharex=True, tight_layout=False)
             plt.subplots_adjust(left=0, bottom=0, right=1, top=1, hspace=0, wspace=0)
-            plt.xlim(i, i + M)
+            plt.xlim(i, mm)
             axes[0].scatter(xs, ys)
-            axes[1].plot(xs, ys)
+            axes[1].plot(xs, featpeak_data[i:mm])
 
-            indices = np.where((i < featpeak_indexes) & (featpeak_indexes < (i + M)))[0]
+            indices = np.where((i < featpeak_indexes) & (featpeak_indexes < mm))[0]
             peaks = featpeak_indexes[indices]
-            axes[0].plot(peaks, featpeak_data[peaks], "x")
+            axes[0].plot(peaks, featpeak_post[peaks], "x")
             if prominences is not None:
-                axes[0].vlines(x=peaks, ymin=featpeak_data[peaks] - featpeak_prominence_minmax[0], ymax=featpeak_data[peaks], color='r', linewidth=2)
-                axes[0].vlines(x=peaks, ymin=featpeak_data[peaks] - prominences[indices], ymax=featpeak_data[peaks], color='g', linewidth=1)
+                axes[0].vlines(x=peaks, ymin=featpeak_post[peaks] - featpeak_prominence_minmax[0], ymax=featpeak_post[peaks], color='r', linewidth=2)
+                axes[0].vlines(x=peaks, ymin=featpeak_post[peaks] - prominences[indices], ymax=featpeak_post[peaks], color='g', linewidth=1)
             if widths is not None:
-                axes[0].hlines(y=width_heights[indices], xmin=left_ips[indices], xmax=right_ips[indices], color='b')
+                axes[0].hlines(y=width_heights[indices], xmin=left_ips[indices], xmax=right_ips[indices], color='y', linewidth=2)
             if featpeak_distance_size > 0:
-                axes[0].hlines(y=featpeak_data[peaks], xmin=peaks, xmax=peaks + featpeak_distance_size, color='b')
+                axes[0].hlines(y=featpeak_post[peaks], xmin=peaks, xmax=peaks + featpeak_distance_size, color='b')
             if featpeak_window_size > 2:
-                axes[0].hlines(y=featpeak_data[peaks], xmin=peaks - half_wlen, xmax=peaks + half_wlen, color='y', linewidth=2)
+                axes[0].hlines(y=featpeak_post[peaks], xmin=peaks - half_wlen, xmax=peaks + half_wlen, color='y', linewidth=2)
+            if featpeak_min_threshold > 0:
+                axes[0].axhline(y=featpeak_min_threshold, color='m', marker='o', linestyle='-', linewidth=1)
             for j in range(peaks.shape[0]):
                 peak = peaks[j]
-                peak_height = featpeak_data[peak]
-                axes[1].text(peak, peak_height, f'{peak},{peak_height}')
+                peak_height = featpeak_post[peak]
+                axes[0].text(peak, peak_height, f'{peak},{round(peak_height, 1)}')
+                axes[1].text(peak, featpeak_data[peak], f'{peak},{featpeak_data[peak]}')
                 if prominences is not None:
                     peak_prominence = prominences[indices][j]
                     axes[0].text(peak + 1, peak_height - 0.5 * peak_prominence, f'{peak_prominence}')
@@ -167,9 +177,9 @@ def _post_featpeak(pigeon, args, progress_cb):# {{{
                     peak_width = widths[indices][j]
                     l_x, r_x = left_ips[indices][j], right_ips[indices][j]
                     w_y = width_heights[indices][j]
-                    axes[0].text(0.5 * (l_x + r_x) - 2, w_y - 2, f'{round(peak_width, 1)}')
-                    axes[1].text(l_x,w_y, f'{int(l_x)}')
-                    axes[1].text(r_x, w_y, f'{int(r_x)}')
+                    axes[0].text(0.5 * (l_x + r_x) - 2, w_y + 2, f'{round(peak_width, 1)}')
+                    axes[0].text(l_x, w_y + 2, f'{int(l_x)}')
+                    axes[0].text(r_x, w_y + 2, f'{int(r_x)}')
             with io.BytesIO() as buff:
                 fig.savefig(buff, format='raw')
                 buff.seek(0)
@@ -190,7 +200,7 @@ def _post_featpeak(pigeon, args, progress_cb):# {{{
         writer = cv2.VideoWriter(tmp_video_file, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
         progress_cb(75)
 
-        fontscale, th = 0.7 if height < 500 else 2, int(0.08 * height)
+        fontscale, th = 0.6 if height < 500 else 2, int(0.08 * height)
         F, J = len(frames), len(frames_info)
         limage = 255 * np.ones((bimage.shape[0], width, bimage.shape[2]), dtype=np.uint8)
         bimage = np.hstack([bimage, limage])
@@ -200,23 +210,24 @@ def _post_featpeak(pigeon, args, progress_cb):# {{{
             img = cv2.resize(img, (width, height))
             img[height - INPUT_HEIGHT - 5:height - 5, 5:INPUT_WIDTH + 5, :] = frames[int(F * progress)]
             cv2.putText(img,
-                    '%dX%d %.1f C:%.1f/%.1f W:%d D:%d R:%.2f' % (
+                    '%dX%d %.1f C:%.1f/%.1f W:%d D:%d R:%.2f H:%s' % (
                         width, height, fps,
                         frames_info[int(J * progress)]['cum_counts'], pigeon['sumcnt'],
-                        featpeak_window_size, featpeak_distance_size, featpeak_relative_height),
-                    (2, int(0.06 * height)),
+                        featpeak_window_size, featpeak_distance_size, featpeak_relative_height,
+                        str(featpeak_height_minmax)),
+                    (2, int(0.62 * height)),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     fontscale,
-                    (0, 0, 0), 2)
+                    (0, 0, 0), 1)
             cv2.putText(img,
-                    "H: %s W:%s P:%s" % (
-                        str(featpeak_height_minmax),
+                    " W:%s P:%s S:%s" % (
                         str(featpeak_width_minmax),
-                        str(featpeak_prominence_minmax)),
+                        str(featpeak_prominence_minmax),
+                        str(ss)),
                     (INPUT_WIDTH + 12, height - int(th * 0.35)),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     fontscale,
-                    (0, 0, 0), 2)
+                    (0, 0, 0), 1)
             writer.write(img)
         writer.release()
 
