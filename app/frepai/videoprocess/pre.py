@@ -221,6 +221,29 @@ def video_preprocess(args, progress_cb=None):
     if debug_write_video:
         writer = cv2.VideoWriter(f'{cache_path}/_pre_video.mp4', cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
 
+    global_feature_select = args.get('global_feature_select', 'mean')
+    global_hdiff_rate = args.get('global_hdiff_rate', 1.0)
+    global_bg_window = args.get('global_bg_window', 0)
+    global_bg_atonce = args.get('global_bg_atonce', True)
+    if global_bg_window > 0:
+        global_bgw_buffer = [(0, None)] * global_bg_window 
+        global_bg_frame = [None, None]
+
+    def _find_bg(idx, img, feat, feats):
+        if global_bg_frame[1] is None:
+            global_bg_frame[1] = img
+        if global_bg_window > 0:
+            if global_bg_frame[0] is not None and global_bg_atonce:
+                return global_bg_frame[0] 
+            global_bgw_buffer[idx % global_bg_window] = (feat, img)
+            if idx >= global_bg_window:
+                mode = stats.mode(feats[-1 * global_bg_window:])[0][0]
+                for feat, frame in global_bgw_buffer:
+                    if feat == mode:
+                        global_bg_frame[0] = frame
+                        return frame
+        return global_bg_frame[1]
+
     if args.rmstill_frame_enable:
         area_rate_thres = args.get('rmstill_rate_threshold', 0.001)
         rmstill_bin_threshold = args.get('rmstill_bin_threshold', 20)
@@ -255,12 +278,27 @@ def video_preprocess(args, progress_cb=None):
         color_upper_value = int(color_buffer_size * color_upper_rate)
         logger.info(f'color_tracker: ({color_area_thres}, {color_lower_value}, {color_upper_value})')
 
+    elif args.featpeak_tracker_enbale:
+        _height = args.get('featpeak_height_minmax', (-1, -1))
+        _width = args.get('featpeak_width_minmax', (-1, -1))
+        _prominence = args.get('featpeak_prominence_minmax', (10, -1))
+
+        resdata['featpeak_detect_trough'] = args.get('featpeak_detect_trough', False)
+        resdata['featpeak_window_size'] = args.get('featpeak_window_size', 10)
+        resdata['featpeak_distance_size'] = args.get('featpeak_distance_size', 10)
+        resdata['featpeak_relative_height'] = args.get('featpeak_relative_height', 0.8)
+        resdata['featpeak_height_minmax'] = (_height, -1) if isinstance(_height, int) else _height
+        resdata['featpeak_width_minmax'] = (_width, -1) if isinstance(_width, int) else _width
+        resdata['featpeak_prominence_minmax'] = (_prominence, -1) if isinstance(_prominence, int) else _prominence
+
     elif args.stdwave_tracker_enable:
         stdwave_feature_select = args.get('stdwave_feature_select', 'std')
         stdwave_bg_window = args.get('stdwave_bg_window', int(fps * 5))
+        stdwave_bg_atonce = args.get('stdwave_bg_atonce', True)
         stdwave_hdiff_rate = args.get('stdwave_hdiff_rate', 1.0)
+        # stdwave_ = args.get('stdwave_hdiff_rate', 1.0)
         stdwave_sub_average = args.get('stdwave_sub_average', True)
-        stdwave_sigma_count = args.get('stdwave_sigma_count', -5.0)
+        stdwave_sigma_count = args.get('stdwave_sigma_count', 3.0)
         stdwave_window_size = args.get('stdwave_window_size', 50)
         stdwave_distance_size = args.get('stdwave_distance_size', 150)
         stdwave_minstd_thresh = args.get('stdwave_minstd_thresh', 0.5)
@@ -292,7 +330,7 @@ def video_preprocess(args, progress_cb=None):
 
     tile_shuffle = args.get('input_tile_shuffle', False)
 
-    stdwave, diffimpulse = [], []
+    stdwave, diffimpulse, featpeak = [], [], []
     keepframe, keepidxes = [], []
     if devmode:
         binframes, binpoints = [], []
@@ -401,6 +439,23 @@ def video_preprocess(args, progress_cb=None):
                     frame_tmp = cv2.cvtColor(color_mask, cv2.COLOR_GRAY2RGB)
                     binframes.append(cv2.resize(frame_tmp, (INPUT_WIDTH, INPUT_HEIGHT)))
 
+        elif args.featpeak_tracker_enbale:
+            frame_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+            # frame_gray = gray_image_blur(frame_gray, 'average', 3)
+            if pre_frame_gray is None:
+                pre_frame_gray = frame_gray
+            frame_tmp = cv2.absdiff(frame_gray, pre_frame_gray)
+            feat = np.sort(frame_tmp.ravel())
+            feat = feat[int(-1 * global_hdiff_rate * len(feat)):]
+            if global_feature_select == 'std':
+                feat = int(np.std(feat))
+            elif global_feature_select == 'mean':
+                feat = int(np.mean(feat))
+            else:
+                raise HandlerError(80004, f'unkown global_feature_select [{global_feature_select}]')
+            featpeak.append(feat)
+            pre_frame_gray = _find_bg(idx, frame_gray, feat, featpeak)
+
         elif args.stdwave_tracker_enable:
             frame_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
             frame_gray = gray_image_blur(frame_gray, stdwave_blur_type, stdwave_filter_kernel)
@@ -418,14 +473,16 @@ def video_preprocess(args, progress_cb=None):
                 raise HandlerError(80004, f'unkown stdwave_feature_select args [{stdwave_feature_select}]')
 
             stdwave.append(feat)
+            # TODO  global_bg_window
             if stdwave_bg_window > 0:
-                stdwave_bgw_buffer[idx % stdwave_bg_window] = (feat, frame_gray)
-                if idx > stdwave_bg_window:
-                    mode = stats.mode(stdwave[-1 * stdwave_bg_window:])[0][0]
-                    for feat, frame in stdwave_bgw_buffer:
-                        if feat == mode:
-                            pre_frame_gray = frame
-                            break
+                if not stdwave_bg_atonce or pre_frame_gray is None:
+                    stdwave_bgw_buffer[idx % stdwave_bg_window] = (feat, frame_gray)
+                    if idx > stdwave_bg_window:
+                        mode = stats.mode(stdwave[-1 * stdwave_bg_window:])[0][0]
+                        for feat, frame in stdwave_bgw_buffer:
+                            if feat == mode:
+                                pre_frame_gray = frame
+                                break
 
             if debug_write_video: # debug
                 if len(stdwave) < 500:
@@ -479,7 +536,8 @@ def video_preprocess(args, progress_cb=None):
 
     if args.stdwave_tracker_enable:
         # TODO
-        logger.info(stdwave)
+        if devmode:
+            logger.info(stdwave)
         stdwave = np.asarray(stdwave)
         if len(stdwave[stdwave > 10]) < 50:
             resdata['progress'] = 100
@@ -489,6 +547,14 @@ def video_preprocess(args, progress_cb=None):
             return None
         np.save(f'{cache_path}/stdwave_data.npy', stdwave)
         resdata['upload_files'].append('stdwave_data.npy')
+    elif args.featpeak_tracker_enbale:
+        if devmode:
+            logger.info(featpeak)
+        if resdata['featpeak_detect_trough']:
+            featpeak = np.asarray(featpeak)
+            featpeak = -1 * featpeak + np.max(featpeak)
+        np.save(f'{cache_path}/featpeak_data.npy', featpeak)
+        resdata['upload_files'].append('featpeak_data.npy')
     elif args.diffimpulse_tracker_enable:
         if devmode:
             logger.info(diffimpulse)

@@ -31,7 +31,43 @@ NUM_FRAMES = 64
 ffmpeg_args = '-preset ultrafast -vcodec libx264 -pix_fmt yuv420p'
 
 
-def _post_kstest(pigeon, progress_cb):
+def _get_videos_samples(video_path, focus_box, black_box, sumcnt, size):# {{{
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise HandlerError(83011, f'open video [{video_path}] err!')
+    fps = round(cap.get(cv2.CAP_PROP_FPS))
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    focus_box = get_rect_points(width, height, focus_box)
+    black_box = get_rect_points(width, height, black_box)
+    if black_box is not None:
+        bx1, by1, bx2, by2 = black_box
+    if focus_box is not None:
+        fx1, fy1, fx2, fy2 = focus_box
+
+    if size < sumcnt:
+        frames_indexes = np.sort(np.random.choice(sumcnt, size, replace=False))
+    frames = []
+    cap_index = -1
+    while len(frames) < size:
+        success, frame_bgr = cap.read()
+        if not success:
+            break
+        cap_index += 1
+        if size < sumcnt:
+            if cap_index != frames_indexes[len(frames)]:
+                continue
+        if black_box is not None:
+            frame_bgr[by1:by2, bx1:bx2, :] = 0
+        if focus_box is not None:
+            frame_bgr = frame_bgr[fy1:fy2, fx1:fx2, :]
+        frames.append(cv2.resize(frame_bgr, (INPUT_WIDTH, INPUT_HEIGHT)))
+    cap.release()
+
+    return frames, width, height, fps# }}}
+
+
+def _post_kstest(pigeon, progress_cb):# {{{
     progress_cb(50)
     kstest_ecdfs_path = pigeon['kstest_ecdfs_path']
     kstest_coss3_path = pigeon['kstest_coss3_path']
@@ -39,10 +75,168 @@ def _post_kstest(pigeon, progress_cb):
     prefix_map = [kstest_ecdfs_path, kstest_coss3_path]
     coss3_put(kstest_ecdfs_path, prefix_map)
     progress_cb(100)
-    return None
+    return None# }}}
 
 
-def _post_stdwave(pigeon, args, progress_cb):
+def _post_featpeak(pigeon, args, progress_cb):# {{{
+    devmode, cache_path, coss3_path = pigeon['devmode'], pigeon['cache_path'], pigeon['coss3_path']
+    progress_cb(10)
+    spf = 1 / pigeon['frame_rate']
+    all_frames_count = pigeon['frame_count']
+    featpeak_indexes = np.load(f'{cache_path}/featpeak_indexes.npy')
+
+    SLEN, c = len(featpeak_indexes), 0
+    progress_cb(30)
+    json_result = {}
+    json_result['num_frames'] = all_frames_count
+    json_result['fps'] = 1
+    frames_info = []
+    if SLEN > 0:
+        for i in range(all_frames_count):
+            if i % pigeon['frame_rate'] == 0:
+                if c < SLEN and i > featpeak_indexes[c]:
+                    c += 1
+                frames_info.append({
+                    'image_id': '%d.jpg' % i,
+                    'at_time': round((i + 1) * spf, 3),
+                    'cum_counts': c * args.reg_factor})
+    else:
+        frames_info = [{'image_id': '0.jpg', 'at_time': 0, 'cum_counts': 0}]
+
+    json_result['frames_period'] = frames_info
+    pigeon['sumcnt'] = frames_info[-1]['cum_counts']
+
+    progress_cb(30)
+
+    if devmode and SLEN > 0:
+        featpeak_window_size = pigeon['featpeak_window_size']
+        featpeak_distance_size = pigeon['featpeak_distance_size']
+        featpeak_relative_height = pigeon['featpeak_relative_height']
+        featpeak_height_minmax = pigeon['featpeak_height_minmax']
+        featpeak_width_minmax = pigeon['featpeak_width_minmax']
+        featpeak_prominence_minmax = pigeon['featpeak_prominence_minmax']
+        
+        featpeak_data = np.load(f'{cache_path}/featpeak_data.npy')
+        with open(f'{cache_path}/featpeak_post.pkl', 'rb') as fr:
+            featpeak_post = pickle.load(fr)
+
+        progress_cb(35)
+
+        widths, prominences, half_wlen = None, None, 0
+        if featpeak_window_size > 2:
+            half_wlen = featpeak_window_size // 2
+        if 'prominences' in featpeak_post:
+            prominences = featpeak_post['prominences']
+        if 'widths' in featpeak_post:
+            widths = featpeak_post['widths']
+            width_heights = featpeak_post['width_heights']
+            left_ips = featpeak_post['left_ips']
+            right_ips = featpeak_post['right_ips']
+        N, M = len(featpeak_data), 1500
+        images = []
+        for i in range(0, N, M):
+            xs = range(i, i + M)
+            ys = featpeak_data[i:i + M]
+            fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(120, 8), sharex=True, tight_layout=False)
+            plt.subplots_adjust(left=0, bottom=0, right=1, top=1, hspace=0, wspace=0)
+            plt.xlim(i, i + M)
+            axes[0].scatter(xs, ys)
+            axes[1].plot(xs, ys)
+
+            indices = np.where((i < featpeak_indexes) & (featpeak_indexes < (i + M)))[0]
+            peaks = featpeak_indexes[indices]
+            axes[0].plot(peaks, featpeak_data[peaks], "x")
+            if prominences is not None:
+                axes[0].vlines(x=peaks, ymin=featpeak_data[peaks] - featpeak_prominence_minmax[0], ymax=featpeak_data[peaks], color='r', linewidth=2)
+                axes[0].vlines(x=peaks, ymin=featpeak_data[peaks] - prominences[indices], ymax=featpeak_data[peaks], color='g', linewidth=1)
+            if widths is not None:
+                axes[0].hlines(y=width_heights[indices], xmin=left_ips[indices], xmax=right_ips[indices], color='b')
+            if featpeak_distance_size > 0:
+                axes[0].hlines(y=featpeak_data[peaks], xmin=peaks, xmax=peaks + featpeak_distance_size, color='b')
+            if featpeak_window_size > 2:
+                axes[0].hlines(y=featpeak_data[peaks], xmin=peaks - half_wlen, xmax=peaks + half_wlen, color='y', linewidth=2)
+            for j in range(peaks.shape[0]):
+                peak = peaks[j]
+                peak_height = featpeak_data[peak]
+                axes[1].text(peak, peak_height, f'{peak},{peak_height}')
+                if prominences is not None:
+                    peak_prominence = prominences[indices][j]
+                    axes[0].text(peak + 1, peak_height - 0.5 * peak_prominence, f'{peak_prominence}')
+                    axes[0].text(peak + 1, peak_height - 0.5 * peak_prominence, f'{peak_prominence}')
+                if widths is not None:
+                    peak_width = widths[indices][j]
+                    l_x, r_x = left_ips[indices][j], right_ips[indices][j]
+                    w_y = width_heights[indices][j]
+                    axes[0].text(0.5 * (l_x + r_x) - 2, w_y - 2, f'{round(peak_width, 1)}')
+                    axes[1].text(l_x,w_y, f'{int(l_x)}')
+                    axes[1].text(r_x, w_y, f'{int(r_x)}')
+            with io.BytesIO() as buff:
+                fig.savefig(buff, format='raw')
+                buff.seek(0)
+                image = np.frombuffer(buff.getvalue(), dtype=np.uint8)
+            imgw, imgh = fig.canvas.get_width_height()
+            imgw, imgh = int(imgw), int(imgh)
+            image = image.reshape((imgh, imgw, -1))
+            image = cv2.cvtColor(image, cv2.COLOR_RGBA2BGR)
+            images.append(image)
+            plt.close(fig)
+        bimage = np.hstack(images)
+        bwidth = bimage.shape[1]
+
+        progress_cb(65)
+        tmp_video_file = f'{cache_path}/_featpeak.mp4'
+        frames, width, height, fps = _get_videos_samples(
+                f'{cache_path}/source.mp4', args.focus_box, args.black_box, all_frames_count, bwidth)
+        writer = cv2.VideoWriter(tmp_video_file, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
+        progress_cb(75)
+
+        fontscale, th = 0.7 if height < 500 else 2, int(0.08 * height)
+        F, J = len(frames), len(frames_info)
+        limage = 255 * np.ones((bimage.shape[0], width, bimage.shape[2]), dtype=np.uint8)
+        bimage = np.hstack([bimage, limage])
+        for i in range(0, bwidth, fps):
+            progress = i / bwidth
+            img = bimage[:, i: i + width]
+            img = cv2.resize(img, (width, height))
+            img[height - INPUT_HEIGHT - 5:height - 5, 5:INPUT_WIDTH + 5, :] = frames[int(F * progress)]
+            cv2.putText(img,
+                    '%dX%d %.1f C:%.1f/%.1f W:%d D:%d R:%.2f' % (
+                        width, height, fps,
+                        frames_info[int(J * progress)]['cum_counts'], pigeon['sumcnt'],
+                        featpeak_window_size, featpeak_distance_size, featpeak_relative_height),
+                    (2, int(0.06 * height)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    fontscale,
+                    (0, 0, 0), 2)
+            cv2.putText(img,
+                    "H: %s W:%s P:%s" % (
+                        str(featpeak_height_minmax),
+                        str(featpeak_width_minmax),
+                        str(featpeak_prominence_minmax)),
+                    (INPUT_WIDTH + 12, height - int(th * 0.35)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    fontscale,
+                    (0, 0, 0), 2)
+            writer.write(img)
+        writer.release()
+
+        progress_cb(90)
+        os.system(f'ffmpeg -an -i {tmp_video_file} {ffmpeg_args} {cache_path}/target-stride.mp4 2>/dev/null')
+        pigeon['upload_files'].append('target-stride.mp4')
+        pigeon['stride_mp4'] = f'{coss3_domain}{coss3_path}/target-stride.mp4'
+        json_result['stride_mp4'] = pigeon['stride_mp4']
+
+    progress_cb(95)
+    with open(f'{cache_path}/result.json', 'w') as fw:
+        json.dump(json_result, fw, indent=4)
+    pigeon['upload_files'].append('result.json')
+    pigeon['target_json'] = f'{coss3_domain}{coss3_path}/result.json'
+
+    progress_cb(96)
+    return pigeon# }}}
+
+
+def _post_stdwave(pigeon, args, progress_cb):# {{{
     devmode, cache_path, coss3_path = pigeon['devmode'], pigeon['cache_path'], pigeon['coss3_path']
     progress_cb(10)
     spf = 1 / pigeon['frame_rate']
@@ -210,10 +404,10 @@ def _post_stdwave(pigeon, args, progress_cb):
     pigeon['target_json'] = f'{coss3_domain}{coss3_path}/result.json'
 
     progress_cb(96)
-    return pigeon
+    return pigeon# }}}
 
 
-def _post_diffimpulse(pigeon, args, progress_cb):
+def _post_diffimpulse(pigeon, args, progress_cb):# {{{
     devmode, cache_path, coss3_path = pigeon['devmode'], pigeon['cache_path'], pigeon['coss3_path']
     progress_cb(10)
     spf = 1 / pigeon['frame_rate']
@@ -369,10 +563,10 @@ def _post_diffimpulse(pigeon, args, progress_cb):
     pigeon['target_json'] = f'{coss3_domain}{coss3_path}/result.json'
 
     progress_cb(96)
-    return pigeon
+    return pigeon# }}}
 
 
-def _post_repnet(pigeon, args, progress_cb):
+def _post_repnet(pigeon, args, progress_cb):# {{{
     devmode, cache_path, coss3_path = pigeon['devmode'], pigeon['cache_path'], pigeon['coss3_path']
 
     keepidxes = np.load(f'{cache_path}/keepidxes.npy')
@@ -625,7 +819,7 @@ def _post_repnet(pigeon, args, progress_cb):
     pigeon['upload_files'].append('result.json')
     pigeon['target_json'] = f'{coss3_domain}{coss3_path}/result.json'
 
-    return pigeon
+    return pigeon# }}}
 
 
 def video_postprocess(pigeon, progress_cb=None):
@@ -655,6 +849,8 @@ def video_postprocess(pigeon, progress_cb=None):
 
     if 'stdwave_window_size' in pigeon:
         pigeon = _post_stdwave(pigeon, args, _send_progress)
+    elif 'featpeak_window_size' in pigeon:
+        pigeon = _post_featpeak(pigeon, args, _send_progress)
     elif 'diffimpulse_window_size' in pigeon:
         pigeon = _post_diffimpulse(pigeon, args, _send_progress)
     else:

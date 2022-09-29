@@ -24,7 +24,12 @@ from frepai.utils import easy_wget
 model = None
 
 
-def _engine_kstest(pigeon, progress_cb):
+##################################################################
+## kstest
+##################################################################
+
+
+def _engine_kstest(pigeon, progress_cb):# {{{
     progress_cb(10)
 
     kstest_ecdfs_path = pigeon['kstest_ecdfs_path']
@@ -40,10 +45,193 @@ def _engine_kstest(pigeon, progress_cb):
     with open(kstest_ecdfs_path, 'wb') as fw:
         pickle.dump(pcaks, fw)
     progress_cb(100)
-    return pigeon
+    return pigeon# }}}
 
 
-def _engine_stdwave(pigeon, progress_cb):
+##################################################################
+## featpeak
+##################################################################
+
+
+def _local_maxima(x):# {{{
+    midpoints, left_edges, right_edges = [], [], []
+    i, i_max = 1, x.shape[0] - 1
+    while i < i_max:
+        if x[i - 1] < x[i]:
+            i_ahead = i + 1
+            while i_ahead < i_max and x[i_ahead] == x[i]:
+                i_ahead += 1
+            if x[i_ahead] < x[i]:
+                left_edges.append(i)
+                right_edges.append(i_ahead - 1)
+                midpoints.append((left_edges[-1] + right_edges[-1]) // 2)
+                i = i_ahead
+        i += 1
+    return np.array(midpoints)
+
+
+def _find_peaks(peaks_values, height=(), distance=-1, prominence=(), width=(), wlen=-1, rel_height=0.5):
+    # peaks_values = np.array(peaks_values)
+    peaks_indices = _local_maxima(peaks_values)
+    SS = [len(peaks_indices)] * 5
+
+    if isinstance(height, (int, float)):
+        height = (height, -1)
+    if isinstance(prominence, (int, float)):
+        prominence = (prominence, -1)
+    if isinstance(width, (int, float)):
+        width = (width, -1)
+
+    def __filterby__(values, pmin, pmax):
+        keep = np.ones(values.size, dtype=np.bool_)
+        if pmin > 0:
+            keep &= (pmin <= values)
+        if pmax > pmin:
+            keep &= (values <= pmax)
+        return keep
+
+    props = {}
+    if len(height) == 2 and height[0] > 1:
+        keep = __filterby__(peaks_values[peaks_indices], height[0], height[1])
+        peaks_indices = peaks_indices[keep]
+        props['peak_heights'] = peaks_values[peaks_indices]
+        SS[1] = len(peaks_indices)
+
+    if distance > 0:
+        peaks_size = peaks_indices.shape[0]
+        keep = np.ones(peaks_size, dtype=np.bool_)
+        priority_indices = np.argsort(peaks_values[peaks_indices])
+        for i in range(peaks_size - 1, -1, -1):
+            j = priority_indices[i]
+            if keep[j] == 0:
+                continue
+            k = j - 1
+            while 0 <= k and peaks_indices[j] - peaks_indices[k] < distance:
+                keep[k] = False
+                k -= 1
+            k = j + 1
+            while k < peaks_size and peaks_indices[k] - peaks_indices[j] < distance:
+                keep[k] = False
+                k += 1
+        peaks_indices = peaks_indices[keep]
+        SS[2] = len(peaks_indices)
+
+    if len(prominence) == 2 or len(width) == 2:
+        peaks_size, values_size = peaks_indices.shape[0], peaks_values.shape[0]
+        prominences = np.empty(peaks_size, dtype=np.int32)
+        left_bases = np.empty(peaks_size, dtype=np.int32)
+        right_bases = np.empty(peaks_size, dtype=np.int32)
+        for idx, peak in enumerate(peaks_indices):
+            i_min = 0
+            i_max = values_size - 1
+
+            if 2 <= wlen:
+                i_min = max(peak - wlen // 2, i_min)
+                i_max = min(peak + wlen // 2, i_max)
+
+            i = left_bases[idx] = peak
+            left_min = peaks_values[peak]
+            while i_min <= i and peaks_values[i] <= peaks_values[peak]:
+                if peaks_values[i] < left_min:
+                    left_min = peaks_values[i]
+                    left_bases[idx] = i
+                i -= 1
+            i = right_bases[idx] = peak
+            right_min = peaks_values[peak]
+            while i <= i_max and peaks_values[i] <= peaks_values[peak]:
+                if peaks_values[i] < right_min:
+                    right_min = peaks_values[i]
+                    right_bases[idx] = i
+                i += 1
+            prominences[idx] = peaks_values[peak] - max(left_min, right_min)
+
+        props['prominences'] = prominences
+        props['left_bases'] = left_bases
+        props['right_bases'] = right_bases
+
+        if len(prominence) == 2 and prominence[0] > 1:
+            keep = __filterby__(prominences, prominence[0], prominence[1])
+            peaks_indices = peaks_indices[keep]
+            props = {key: array[keep] for key, array in props.items()}
+            SS[3] = len(peaks_indices)
+
+        if len(width) == 2 and width[0] > 1:
+            peaks_size = peaks_indices.shape[0]
+            widths = np.empty(peaks_size, dtype=np.float64)
+            width_heights = np.empty(peaks_size, dtype=np.float64)
+            left_ips = np.empty(peaks_size, dtype=np.float64)
+            right_ips = np.empty(peaks_size, dtype=np.float64)
+            for idx, peak in enumerate(peaks_indices):
+                i_min = props['left_bases'][idx]
+                i_max = props['right_bases'][idx]
+                height = width_heights[idx] = peaks_values[peak] - props['prominences'][idx] * rel_height
+
+                i = peak
+                while i_min < i and height < peaks_values[i]:
+                    i -= 1
+                left_ip = i
+                if peaks_values[i] < height:
+                    left_ip += (height - peaks_values[i]) / (peaks_values[i + 1] - peaks_values[i])
+
+                i = peak
+                while i < i_max and height < peaks_values[i]:
+                    i += 1
+                right_ip = i
+                if peaks_values[i] < height:
+                    right_ip -= (height - peaks_values[i]) / (peaks_values[i - 1] - peaks_values[i])
+
+                widths[idx] = right_ip - left_ip
+                left_ips[idx] = left_ip
+                right_ips[idx] = right_ip
+
+            props['widths'] = widths
+            props['width_heights'] = width_heights
+            props['left_ips'] = left_ips
+            props['right_ips'] = right_ips
+
+            keep = __filterby__(widths, width[0], width[1])
+            peaks_indices = peaks_indices[keep]
+            props = {key: array[keep] for key, array in props.items()}
+            SS[4] = len(peaks_indices)
+
+    logger.info(f'peaks_indices: {SS}')
+    return peaks_indices, props
+
+
+def _engine_featpeak(pigeon, progress_cb):
+    devmode = pigeon['devmode']
+    featpeak_window_size = pigeon['featpeak_window_size']
+    featpeak_distance_size = pigeon['featpeak_distance_size']
+    featpeak_relative_height = pigeon['featpeak_relative_height']
+    featpeak_height_minmax = pigeon['featpeak_height_minmax']
+    featpeak_width_minmax = pigeon['featpeak_width_minmax']
+    featpeak_prominence_minmax = pigeon['featpeak_prominence_minmax']
+
+    progress_cb(10)
+
+    featpeak_data = np.load(f'{pigeon["cache_path"]}/featpeak_data.npy')
+    peaks_indices, properties = _find_peaks(featpeak_data,
+            featpeak_height_minmax, featpeak_distance_size, featpeak_prominence_minmax,
+            featpeak_width_minmax, featpeak_window_size, featpeak_relative_height)
+
+    progress_cb(70)
+
+    np.save(f'{pigeon["cache_path"]}/featpeak_indexes.npy', np.asarray(peaks_indices))
+    if devmode:
+        with open(f'{pigeon["cache_path"]}/featpeak_post.pkl', 'wb') as fw:
+            pickle.dump(properties, fw)
+
+    progress_cb(100)
+    return pigeon# }}}
+
+
+##################################################################
+## stdwave
+##################################################################
+
+
+def _engine_stdwave(pigeon, progress_cb):# {{{
+    devmode = pigeon['devmode']
     stdwave_sub_average = pigeon['stdwave_sub_average']
     stdwave_sigma_count = pigeon['stdwave_sigma_count']
     stdwave_window_size = pigeon['stdwave_window_size']
@@ -64,6 +252,8 @@ def _engine_stdwave(pigeon, progress_cb):
         average = np.mean(wdata, axis=-1)
 
         stdwave_data = stdwave_data - average
+        if devmode:
+            logger.info(np.round(stdwave_data, 3).tolist())
     progress_cb(50)
     mean, std = stdwave_data.mean(), stdwave_data.std()
     logger.info(f'mean: {mean}, std: {std}')
@@ -91,7 +281,7 @@ def _engine_stdwave(pigeon, progress_cb):
         logger.error(f'std[{std}] vs minstd[{stdwave_minstd_thresh}]')
         indexes = []
 
-    if pigeon['devmode']:
+    if devmode:
         pigeon['stdwave_mean'] = mean
         pigeon['stdwave_std'] = std
         np.save(f'{pigeon["cache_path"]}/stdwave_post.npy', np.asarray(stdwave_data))
@@ -99,11 +289,16 @@ def _engine_stdwave(pigeon, progress_cb):
     np.save(f'{pigeon["cache_path"]}/stdwave_indexes.npy', np.asarray(indexes))
     logger.info(pigeon)
     progress_cb(100)
-    return pigeon
+    return pigeon# }}}
 
 
-def _engine_diffimpulse(pigeon, progress_cb):
-    dev = pigeon['devmode']
+##################################################################
+## 0-1 impulse
+##################################################################
+
+
+def _engine_diffimpulse(pigeon, progress_cb):# {{{
+    devmode = pigeon['devmode']
     diffimpulse_window_size = pigeon['diffimpulse_window_size']
     progress_cb(10)
     diffimpulse_data = np.load(f'{pigeon["cache_path"]}/diffimpulse_data.npy')
@@ -111,7 +306,7 @@ def _engine_diffimpulse(pigeon, progress_cb):
     indexes = []
     thresh_zero, thresh_one = diffimpulse_window_size
     rec_zero, rec_one = 0, 0
-    if dev:
+    if devmode:
         impulse_0_1 = np.array([0] * len(diffimpulse_data))
         if diffimpulse_data[0] == 0:
             zero_cnt_list, one_cnt_list = [0], []
@@ -120,7 +315,7 @@ def _engine_diffimpulse(pigeon, progress_cb):
     for i, d in enumerate(diffimpulse_data):
         if d == 0:
             rec_zero += 1
-            if dev:
+            if devmode:
                 if zero_cnt_list[-1] == 0:
                     one_cnt_list.append(0)
                 zero_cnt_list[-1] += 1
@@ -129,13 +324,13 @@ def _engine_diffimpulse(pigeon, progress_cb):
                     rec_one = 0
                 else:
                     if rec_zero > thresh_zero:
-                        if dev:
+                        if devmode:
                             impulse_0_1[i - rec_zero - rec_one: i - rec_zero] = 1
                         indexes.append(i - rec_zero)
                         rec_one = 0
         else:
             rec_one += 1
-            if dev:
+            if devmode:
                 if one_cnt_list[-1] == 0:
                     zero_cnt_list.append(0)
                 one_cnt_list[-1] += 1
@@ -148,16 +343,21 @@ def _engine_diffimpulse(pigeon, progress_cb):
 
     progress_cb(70)
     np.save(f'{pigeon["cache_path"]}/diffimpulse_indexes.npy', np.asarray(indexes))
-    if dev:
+    if devmode:
         np.save(f'{pigeon["cache_path"]}/diffimpulse_cnt_0.npy', np.asarray(zero_cnt_list))
         np.save(f'{pigeon["cache_path"]}/diffimpulse_cnt_1.npy', np.asarray(one_cnt_list))
         np.save(f'{pigeon["cache_path"]}/diffimpulse_0_1.npy', np.asarray(impulse_0_1))
     logger.info(pigeon)
     progress_cb(100)
-    return pigeon
+    return pigeon# }}}
 
 
-def engine_process(pigeon, progress_cb=None):
+##################################################################
+## repnet
+##################################################################
+
+
+def engine_process(pigeon, progress_cb=None):# {{{
     if 'cache_path' not in pigeon:
         raise HandlerError(82001, 'not found cache_path')
 
@@ -179,6 +379,9 @@ def engine_process(pigeon, progress_cb=None):
 
     if 'kstest_ecdfs_path' in pigeon:
         return _engine_kstest(pigeon, _send_progress)
+
+    if 'featpeak_window_size' in pigeon:
+        return _engine_featpeak(pigeon, _send_progress)
 
     if 'stdwave_window_size' in pigeon:
         return _engine_stdwave(pigeon, _send_progress)
@@ -232,4 +435,4 @@ def engine_process(pigeon, progress_cb=None):
 
     _send_progress(100)
 
-    return pigeon
+    return pigeon# }}}
