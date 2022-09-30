@@ -248,7 +248,8 @@ def _engine_featpeak(pigeon, progress_cb):
     progress_cb(10)
     featpeak_data = np.load(f'{pigeon["cache_path"]}/featpeak_data.npy')
     if featpeak_data_normal:
-        featpeak_data = _features_sliding_window(featpeak_data, featpeak_width_minmax[0], 'min')
+        featpeak_data = _features_sliding_window(featpeak_data, featpeak_window_size, 'min')
+        # featpeak_data = featpeak_data - featpeak_data.min()
 
     progress_cb(30)
     peaks_indices, properties = _find_peaks(featpeak_data,

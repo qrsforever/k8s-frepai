@@ -10,6 +10,8 @@
 {
     "focus_box": [0, 0, 1, 1],
 
+    "global_blur_type": "none",
+    "global_filter_kernel": 3,
     "global_feature_select": "mean",
     "global_hdiff_rate": 0.3,
     "global_bg_window": 150,

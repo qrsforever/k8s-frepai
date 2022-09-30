@@ -138,11 +138,15 @@ def _post_featpeak(pigeon, args, progress_cb):# {{{
             width_heights = featpeak_props['width_heights']
             left_ips = featpeak_props['left_ips']
             right_ips = featpeak_props['right_ips']
-        N, M = len(featpeak_post), 1500
+        M = 1500
+        featpeak_data = np.hstack([featpeak_data, [featpeak_data[-1]] * (M - len(featpeak_data) % M)])
+        if featpeak_data_normal:
+            featpeak_post = np.hstack([featpeak_post, [featpeak_post[-1]] * (M - len(featpeak_post) % M)])
+        N = len(featpeak_post) 
         images = []
         for i in range(0, N, M):
             ys = featpeak_post[i:i + M]
-            mm = i + len(ys)
+            mm = i + M # len(ys)
             xs = range(i, mm)
             fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(120, 8), sharex=True, tight_layout=False)
             plt.subplots_adjust(left=0, bottom=0, right=1, top=1, hspace=0, wspace=0)
@@ -167,7 +171,7 @@ def _post_featpeak(pigeon, args, progress_cb):# {{{
             for j in range(peaks.shape[0]):
                 peak = peaks[j]
                 peak_height = featpeak_post[peak]
-                axes[0].text(peak, peak_height, f'{peak},{round(peak_height, 1)}')
+                axes[0].text(peak, peak_height, f'{peak},{round(peak_height)}')
                 axes[1].text(peak, featpeak_data[peak], f'{peak},{featpeak_data[peak]}')
                 if prominences is not None:
                     peak_prominence = prominences[indices][j]
@@ -177,7 +181,7 @@ def _post_featpeak(pigeon, args, progress_cb):# {{{
                     peak_width = widths[indices][j]
                     l_x, r_x = left_ips[indices][j], right_ips[indices][j]
                     w_y = width_heights[indices][j]
-                    axes[0].text(0.5 * (l_x + r_x) - 2, w_y + 2, f'{round(peak_width, 1)}')
+                    axes[0].text(0.5 * (l_x + r_x) - 3, w_y + 2, f'{round(peak_width)}, {round(w_y)}')
                     axes[0].text(l_x, w_y + 2, f'{int(l_x)}')
                     axes[0].text(r_x, w_y + 2, f'{int(r_x)}')
             with io.BytesIO() as buff:
@@ -190,6 +194,11 @@ def _post_featpeak(pigeon, args, progress_cb):# {{{
             image = cv2.cvtColor(image, cv2.COLOR_RGBA2BGR)
             images.append(image)
             plt.close(fig)
+
+            cv2.imwrite(f'{cache_path}/featpeak_{i}.jpg', image)
+            pigeon['upload_files'].append(f'featpeak_{i}.jpg')
+            pigeon[f'featpeak_image_{i}'] = f'{coss3_domain}{coss3_path}/featpeak_{i}.jpg'
+
         bimage = np.hstack(images)
         bwidth = bimage.shape[1]
 
@@ -201,7 +210,9 @@ def _post_featpeak(pigeon, args, progress_cb):# {{{
         progress_cb(75)
 
         fontscale, th = 0.6 if height < 500 else 2, int(0.08 * height)
+        frames.extend([frames[-1]] * (len(featpeak_post) - len(frames)))
         F, J = len(frames), len(frames_info)
+        logger.info(f'{N}, {F}')
         limage = 255 * np.ones((bimage.shape[0], width, bimage.shape[2]), dtype=np.uint8)
         bimage = np.hstack([bimage, limage])
         for i in range(0, bwidth, fps):

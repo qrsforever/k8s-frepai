@@ -221,13 +221,15 @@ def video_preprocess(args, progress_cb=None):
     if debug_write_video:
         writer = cv2.VideoWriter(f'{cache_path}/_pre_video.mp4', cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
 
+    global_bg_frame = [None, None]
+    global_blur_type = args.get('global_blur_type', 'none')
+    global_filter_kernel = args.get('global_filter_kernel', 3)
     global_feature_select = args.get('global_feature_select', 'mean')
     global_hdiff_rate = args.get('global_hdiff_rate', 1.0)
     global_bg_window = args.get('global_bg_window', 0)
     global_bg_atonce = args.get('global_bg_atonce', True)
     if global_bg_window > 0:
         global_bgw_buffer = [(0, None)] * global_bg_window 
-        global_bg_frame = [None, None]
 
     def _find_bg(idx, img, feat, feats):
         if global_bg_frame[1] is None:
@@ -350,6 +352,9 @@ def video_preprocess(args, progress_cb=None):
             frame_bgr = frame_raw
 
         # frame_bgr = cv2.fastNlMeansDenoisingColored(frame_bgr,None, 10, 10, 7, 21)
+        frame_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+        if global_blur_type != "none":
+            frame_gray = gray_image_blur(frame_gray, global_blur_type, global_filter_kernel)
 
         if args.rmstill_frame_enable:
             if rmstill_brightness_norm:
@@ -442,8 +447,6 @@ def video_preprocess(args, progress_cb=None):
                     binframes.append(cv2.resize(frame_tmp, (INPUT_WIDTH, INPUT_HEIGHT)))
 
         elif args.featpeak_tracker_enbale:
-            frame_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-            # frame_gray = gray_image_blur(frame_gray, 'average', 3)
             if pre_frame_gray is None:
                 pre_frame_gray = frame_gray
             frame_tmp = cv2.absdiff(frame_gray, pre_frame_gray)
@@ -459,6 +462,7 @@ def video_preprocess(args, progress_cb=None):
             pre_frame_gray = _find_bg(idx, frame_gray, feat, featpeak)
 
         elif args.stdwave_tracker_enable:
+            # TODO use global
             frame_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
             frame_gray = gray_image_blur(frame_gray, stdwave_blur_type, stdwave_filter_kernel)
             if pre_frame_gray is None:
