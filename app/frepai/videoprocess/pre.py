@@ -192,10 +192,10 @@ def video_preprocess(args, progress_cb=None):
         raise HandlerError(80002, f'open video[{args.video}] [{video_path}] fail!')
 
     fps = round(cap.get(cv2.CAP_PROP_FPS))
-    cnt = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    all_cnt = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
     black_box = get_rect_points(width, height, args.black_box)
     if black_box is not None:
@@ -206,7 +206,7 @@ def video_preprocess(args, progress_cb=None):
         w = focus_x2 - focus_x1
         h = focus_y2 - focus_y1
 
-    logger.info(f'width[{width} vs {w}] height[{height} vs {h}] framerate[{fps}] count[{cnt}]')
+    logger.info(f'width[{width} vs {w}] height[{height} vs {h}] framerate[{fps}] count[{all_cnt}]')
 
     area, frames_invalid = w * h, False
     if w < 0 or h < 0 or area < MIN_AREA_THRESH:
@@ -222,6 +222,7 @@ def video_preprocess(args, progress_cb=None):
         writer = cv2.VideoWriter(f'{cache_path}/_pre_video.mp4', cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
 
     global_bg_frame = [None, None]
+    global_grap_step = int(fps * args.get('global_grap_interval', -1))
     global_blur_type = args.get('global_blur_type', 'none')
     global_filter_kernel = args.get('global_filter_kernel', 3)
     global_feature_select = args.get('global_feature_select', 'mean')
@@ -230,6 +231,28 @@ def video_preprocess(args, progress_cb=None):
     global_bg_atonce = args.get('global_bg_atonce', True)
     if global_bg_window > 0:
         global_bgw_buffer = [(0, None)] * global_bg_window 
+
+    if global_grap_step > 0:
+        resdata['global_grap_step'] = global_grap_step
+        s, video_path = 0, f'{cache_path}/source_lite.mp4'
+        lite_writer = cv2.VideoWriter(video_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            if s % global_grap_step == 0:
+                lite_writer.write(frame)
+            s += 1
+        lite_writer.release()
+        cap.release()
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            raise HandlerError(80002, f'open video[{args.video}] [{video_path}] fail!')
+        cnt = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    else:
+        cnt = all_cnt
+
+    resdata['video_path'] = video_path
 
     def _find_bg(idx, img, feat, feats):
         if global_bg_frame[1] is None:
@@ -593,7 +616,7 @@ def video_preprocess(args, progress_cb=None):
     resdata['upload_files'].append('config.json')
     resdata['cache_path'] = cache_path
     resdata['coss3_path'] = coss3_path
-    resdata['frame_count'] = cnt
+    resdata['frame_count'] = all_cnt
     resdata['frame_rate'] = fps
 
     _send_progress(100)

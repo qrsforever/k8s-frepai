@@ -80,6 +80,7 @@ def _post_kstest(pigeon, progress_cb):# {{{
 
 def _post_featpeak(pigeon, args, progress_cb):# {{{
     devmode, cache_path, coss3_path = pigeon['devmode'], pigeon['cache_path'], pigeon['coss3_path']
+    video_path = pigeon['video_path']
     progress_cb(10)
     spf = 1 / pigeon['frame_rate']
     all_frames_count = pigeon['frame_count']
@@ -204,8 +205,8 @@ def _post_featpeak(pigeon, args, progress_cb):# {{{
 
         progress_cb(65)
         tmp_video_file = f'{cache_path}/_featpeak.mp4'
-        frames, width, height, fps = _get_videos_samples(
-                f'{cache_path}/source.mp4', args.focus_box, args.black_box, all_frames_count, bwidth)
+        frames, width, height, fps = _get_videos_samples(video_path,
+                args.focus_box, args.black_box, all_frames_count, bwidth)
         writer = cv2.VideoWriter(tmp_video_file, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
         progress_cb(75)
 
@@ -260,6 +261,7 @@ def _post_featpeak(pigeon, args, progress_cb):# {{{
 
 def _post_stdwave(pigeon, args, progress_cb):# {{{
     devmode, cache_path, coss3_path = pigeon['devmode'], pigeon['cache_path'], pigeon['coss3_path']
+    video_path = pigeon['video_path']
     progress_cb(10)
     spf = 1 / pigeon['frame_rate']
     all_frames_count = pigeon['frame_count']
@@ -270,10 +272,11 @@ def _post_stdwave(pigeon, args, progress_cb):# {{{
     json_result['num_frames'] = all_frames_count
     json_result['fps'] = 1
     frames_info = []
+    grap_step = pigeon.get('global_grap_step', 1)
     if SLEN > 0:
         for i in range(all_frames_count):
             if i % pigeon['frame_rate'] == 0:
-                if c < SLEN and i > stdwave_indexes[c]:
+                if c < SLEN and i > grap_step * stdwave_indexes[c]:
                     c += 1
                 frames_info.append({
                     'image_id': '%d.jpg' % i,
@@ -287,13 +290,15 @@ def _post_stdwave(pigeon, args, progress_cb):# {{{
 
     progress_cb(50)
     if devmode and SLEN > 0:
-        cap = cv2.VideoCapture(f'{cache_path}/source.mp4')
+        cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
-            raise HandlerError(83011, f'open video [{cache_path}/source.mp4] err!')
+            raise HandlerError(83011, f'open video [{video_path}] err!')
 
         fps = round(cap.get(cv2.CAP_PROP_FPS))
+        cnt = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        logger.info(f'{video_path}:{int(cap.get(cv2.CAP_PROP_FRAME_COUNT))}')
 
         stdwave_bg_window = pigeon['stdwave_bg_window']
         stdwave_sigma_count = pigeon['stdwave_sigma_count']
@@ -346,16 +351,20 @@ def _post_stdwave(pigeon, args, progress_cb):# {{{
 
         fontscale = 0.7 if height < 500 else 2
 
-        frames, sum_counts = [], []
-        frames_indexes = np.sort(np.random.choice(all_frames_count, image.shape[1], replace=False))
+        frames, sum_counts, frames_indexes = [], [], None
+        if image.shape[1] < cnt:
+            frames_indexes = np.sort(np.random.choice(cnt, image.shape[1], replace=False))
+        else:
+            image = cv2.resize(image, (cnt, height), interpolation=cv2.INTER_LINEAR)
         cap_index, cur_cnt = -1, 0
         while len(frames) < image.shape[1]:
             success, frame_bgr = cap.read()
             if not success:
                 break
             cap_index += 1
-            if cap_index != frames_indexes[len(frames)]:
-                continue
+            if frames_indexes is not None:
+                if cap_index != frames_indexes[len(frames)]:
+                    continue
             if black_box is not None:
                 frame_bgr[by1:by2, bx1:bx2, :] = 0
             if focus_box is not None:
@@ -431,6 +440,7 @@ def _post_stdwave(pigeon, args, progress_cb):# {{{
 
 def _post_diffimpulse(pigeon, args, progress_cb):# {{{
     devmode, cache_path, coss3_path = pigeon['devmode'], pigeon['cache_path'], pigeon['coss3_path']
+    video_path = pigeon['video_path']
     progress_cb(10)
     spf = 1 / pigeon['frame_rate']
     all_frames_count = pigeon['frame_count']
@@ -487,9 +497,9 @@ def _post_diffimpulse(pigeon, args, progress_cb):# {{{
         tmp_video_file = f'{cache_path}/_diffimpulse.mp4'
         progress_cb(65)
 
-        cap = cv2.VideoCapture(f'{cache_path}/source.mp4')
+        cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
-            raise HandlerError(83011, f'open video [{cache_path}/source.mp4] err!')
+            raise HandlerError(83011, f'open video [{video_path}] err!')
 
         fps = round(cap.get(cv2.CAP_PROP_FPS))
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -506,16 +516,18 @@ def _post_diffimpulse(pigeon, args, progress_cb):# {{{
 
         fontscale = 0.7 if height < 500 else 2
 
-        frames, sum_counts = [], []
-        frames_indexes = np.sort(np.random.choice(all_frames_count, image.shape[1], replace=False))
+        frames, sum_counts, frames_indexes = [], [], None
+        if image.shape[1] < all_frames_count: 
+            frames_indexes = np.sort(np.random.choice(all_frames_count, image.shape[1], replace=False))
         cap_index, cur_cnt = -1, 0
         while len(frames) < image.shape[1]:
             success, frame_bgr = cap.read()
             if not success:
                 break
             cap_index += 1
-            if cap_index != frames_indexes[len(frames)]:
-                continue
+            if frames_indexes is not None:
+                if cap_index != frames_indexes[len(frames)]:
+                    continue
             if black_box is not None:
                 frame_bgr[by1:by2, bx1:bx2, :] = 0
             if focus_box is not None:
@@ -590,7 +602,7 @@ def _post_diffimpulse(pigeon, args, progress_cb):# {{{
 
 def _post_repnet(pigeon, args, progress_cb):# {{{
     devmode, cache_path, coss3_path = pigeon['devmode'], pigeon['cache_path'], pigeon['coss3_path']
-
+    video_path = pigeon['video_path']
     keepidxes = np.load(f'{cache_path}/keepidxes.npy')
     with open(f'{cache_path}/engine.pkl', 'rb') as r:
         engine = pickle.load(r)
@@ -656,9 +668,9 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
     del within_period, per_frame_counts
 
     if devmode:
-        cap = cv2.VideoCapture(f'{cache_path}/source.mp4')
+        cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
-            raise HandlerError(83011, f'open video [{cache_path}/source.mp4] err!')
+            raise HandlerError(83011, f'open video [{video_path}] err!')
 
         fps = round(cap.get(cv2.CAP_PROP_FPS))
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))

@@ -146,7 +146,7 @@ spec:
             - |
               SRS_ROOT=/usr/local/srs
               SRS_CONF=${SRS_ROOT}/conf/frepai.conf
-              DURATIONS=(15 30 300 600 900 1200 1500)
+              DURATIONS=(15 30 60 120 300 600 900 1200 1500)
               cat /srs/server.conf > ${SRS_CONF}
               for d in ${DURATIONS[@]}
               do
