@@ -319,29 +319,39 @@ def video_preprocess(args, progress_cb=None):
         resdata['featpeak_prominence_minmax'] = (_prominence, -1) if isinstance(_prominence, int) else _prominence
 
     elif args.stdwave_tracker_enable:
-        stdwave_feature_select = args.get('stdwave_feature_select', 'std')
-        stdwave_bg_window = args.get('stdwave_bg_window', int(fps * 5))
-        stdwave_bg_atonce = args.get('stdwave_bg_atonce', True)
-        stdwave_hdiff_rate = args.get('stdwave_hdiff_rate', 1.0)
-        # stdwave_ = args.get('stdwave_hdiff_rate', 1.0)
+        # TODO use global instead
+        stdwave_feature_select = args.get('stdwave_feature_select', None)
+        if stdwave_feature_select is not None:
+            global_feature_select = stdwave_feature_select
+        stdwave_blur_type = args.get('stdwave_blur_type', None)
+        if stdwave_blur_type is not None:
+            global_blur_type = stdwave_blur_type
+        stdwave_filter_kernel = args.get('stdwave_filter_kernel', None)
+        if stdwave_filter_kernel is not None:
+            global_filter_kernel = stdwave_filter_kernel 
+        stdwave_hdiff_rate = args.get('stdwave_hdiff_rate', None)
+        if stdwave_hdiff_rate is not None:
+            global_hdiff_rate = stdwave_hdiff_rate
+        stdwave_bg_atonce = args.get('stdwave_bg_atonce', None)
+        if stdwave_bg_atonce is not None:
+            global_bg_atonce = stdwave_bg_atonce 
+        stdwave_bg_window = args.get('stdwave_bg_window', None)
+        if stdwave_bg_window is not None:
+            global_bg_window = stdwave_bg_window 
+        if global_bg_window > 0:
+            global_bgw_buffer = [(0, None)] * global_bg_window 
+
         stdwave_sub_average = args.get('stdwave_sub_average', True)
         stdwave_sigma_count = args.get('stdwave_sigma_count', 3.0)
         stdwave_window_size = args.get('stdwave_window_size', 50)
         stdwave_distance_size = args.get('stdwave_distance_size', 150)
         stdwave_minstd_thresh = args.get('stdwave_minstd_thresh', 0.5)
-        stdwave_blur_type = args.get('stdwave_blur_type', 'none')
-        stdwave_filter_kernel = args.get('stdwave_filter_kernel', 3)
-        # stdwave_noise_kernel = np.ones((stdwave_filter_kernel, stdwave_filter_kernel), np.uint8)
         resdata['stdwave_sigma_count'] = stdwave_sigma_count
         resdata['stdwave_sub_average'] = stdwave_sub_average
         resdata['stdwave_window_size'] = stdwave_window_size
         resdata['stdwave_distance_size'] = stdwave_distance_size
         resdata['stdwave_minstd_thresh'] = stdwave_minstd_thresh
-        resdata['stdwave_bg_window'] = stdwave_bg_window
-
-        if stdwave_bg_window > 0:
-            stdwave_bgw_buffer = [(0, None)] * stdwave_bg_window
-
+        resdata['stdwave_bg_window'] = global_bg_window
         logger.info(f'stdwave_tracker: ({stdwave_sigma_count}, {stdwave_window_size}, {stdwave_distance_size})')
 
     elif args.diffimpulse_tracker_enable:
@@ -486,32 +496,20 @@ def video_preprocess(args, progress_cb=None):
 
         elif args.stdwave_tracker_enable:
             # TODO use global
-            frame_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-            frame_gray = gray_image_blur(frame_gray, stdwave_blur_type, stdwave_filter_kernel)
             if pre_frame_gray is None:
                 pre_frame_gray = frame_gray
-
             frame_tmp = cv2.absdiff(frame_gray, pre_frame_gray)
             feat = np.sort(frame_tmp.ravel())
-            feat = feat[int(-1 * stdwave_hdiff_rate * len(feat)):]
-            if stdwave_feature_select == 'std':
+            feat = feat[int(-1 * global_hdiff_rate * len(feat)):]
+            if global_feature_select == 'std':
                 feat = int(np.std(feat))
-            elif stdwave_feature_select == 'mean':
+            elif global_feature_select == 'mean':
                 feat = int(np.mean(feat))
             else:
-                raise HandlerError(80004, f'unkown stdwave_feature_select args [{stdwave_feature_select}]')
+                raise HandlerError(80004, f'unkown global_feature_select args [{global_feature_select}]')
 
             stdwave.append(feat)
-            # TODO  global_bg_window
-            if stdwave_bg_window > 0:
-                if not stdwave_bg_atonce or pre_frame_gray is None:
-                    stdwave_bgw_buffer[idx % stdwave_bg_window] = (feat, frame_gray)
-                    if idx > stdwave_bg_window:
-                        mode = stats.mode(stdwave[-1 * stdwave_bg_window:])[0][0]
-                        for feat, frame in stdwave_bgw_buffer:
-                            if feat == mode:
-                                pre_frame_gray = frame
-                                break
+            pre_frame_gray = _find_bg(idx, frame_gray, feat, stdwave)
 
             if debug_write_video: # debug
                 if len(stdwave) < 500:
