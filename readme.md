@@ -51,17 +51,11 @@
     "featpeak_tracker_enbale": false,
     "stdwave_tracker_enable": true,
     
-    "stdwave_feature_select": "mean",
-    "stdwave_bg_window": 250,
-    "stdwave_bg_atonce": true,
-    "stdwave_hdiff_rate": 0.15,
     "stdwave_sub_average": true,
     "stdwave_sigma_count": 3.5,
     "stdwave_window_size": 50,
     "stdwave_distance_size": 100,
     "stdwave_minstd_thresh": 0.5,
-    "stdwave_blur_type": "none",
-    "stdwave_filter_kernel": 3
 }
 ```
 
