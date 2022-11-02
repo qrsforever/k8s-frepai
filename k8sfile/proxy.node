@@ -1,0 +1,2 @@
+kubectl label --overwrite nodes proxy001 private/proxy="true"
+kubectl taint --overwrite nodes proxy001 private/proxy:NoSchedule
