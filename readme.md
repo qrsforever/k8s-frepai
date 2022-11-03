@@ -50,9 +50,10 @@
     "diffimpulse_tracker_enable": false,
     "featpeak_tracker_enbale": false,
     "stdwave_tracker_enable": true,
-    
+
     "stdwave_sub_average": true,
     "stdwave_sigma_count": 3.5,
+
     "stdwave_window_size": 50,
     "stdwave_distance_size": 100,
     "stdwave_minstd_thresh": 0.5,

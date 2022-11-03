@@ -6,11 +6,13 @@ services:
   zookeeper:
     image: wurstmeister/zookeeper
     container_name: zookeeper
+    network_mode: bridge
     ports:
       - "2181:2181"
   kafka:
     image: wurstmeister/kafka
     container_name: kafka
+    network_mode: bridge
     depends_on: [ zookeeper ]
     ports:
       - "19092:19092"

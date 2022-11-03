@@ -230,7 +230,7 @@ def video_preprocess(args, progress_cb=None):
     global_bg_window = args.get('global_bg_window', 0)
     global_bg_atonce = args.get('global_bg_atonce', True)
     if global_bg_window > 0:
-        global_bgw_buffer = [(0, None)] * global_bg_window 
+        global_bgw_buffer = [(0, None)] * global_bg_window
 
     if global_grap_step > 0:
         resdata['global_grap_step'] = global_grap_step
@@ -259,7 +259,7 @@ def video_preprocess(args, progress_cb=None):
             global_bg_frame[1] = img
         if global_bg_window > 0:
             if global_bg_frame[0] is not None and global_bg_atonce:
-                return global_bg_frame[0] 
+                return global_bg_frame[0]
             global_bgw_buffer[idx % global_bg_window] = (feat, img)
             if idx >= global_bg_window:
                 mode = stats.mode(feats[-1 * global_bg_window:])[0][0]
@@ -328,18 +328,18 @@ def video_preprocess(args, progress_cb=None):
             global_blur_type = stdwave_blur_type
         stdwave_filter_kernel = args.get('stdwave_filter_kernel', None)
         if stdwave_filter_kernel is not None:
-            global_filter_kernel = stdwave_filter_kernel 
+            global_filter_kernel = stdwave_filter_kernel
         stdwave_hdiff_rate = args.get('stdwave_hdiff_rate', None)
         if stdwave_hdiff_rate is not None:
             global_hdiff_rate = stdwave_hdiff_rate
         stdwave_bg_atonce = args.get('stdwave_bg_atonce', None)
         if stdwave_bg_atonce is not None:
-            global_bg_atonce = stdwave_bg_atonce 
+            global_bg_atonce = stdwave_bg_atonce
         stdwave_bg_window = args.get('stdwave_bg_window', None)
         if stdwave_bg_window is not None:
-            global_bg_window = stdwave_bg_window 
+            global_bg_window = stdwave_bg_window
         if global_bg_window > 0:
-            global_bgw_buffer = [(0, None)] * global_bg_window 
+            global_bgw_buffer = [(0, None)] * global_bg_window
 
         stdwave_sub_average = args.get('stdwave_sub_average', True)
         stdwave_sigma_count = args.get('stdwave_sigma_count', 3.0)
