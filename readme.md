@@ -9,6 +9,7 @@
 ```json
 {
     "focus_box": [0, 0, 1, 1],
+    "black_box": [1, 1, 1, 1],
     "global_grap_interval": -1,
     "global_blur_type": "none",
     "global_filter_kernel": 3,

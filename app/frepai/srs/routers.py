@@ -28,7 +28,7 @@ def _srs_on_publish():
     reqjson['external_port'] = 31985
     reqjson['webrtc_play'] = f'webrtc://{net_ip}:31985/{reqjson["app"]}/{reqjson["stream"]}{reqjson["param"]}'
     api_srs.queue.put(reqjson)
-    return '0' 
+    return '0'
 
 
 @api_srs.route('/on_unpublish', methods=['POST'])
@@ -72,7 +72,7 @@ def _srs_on_dvr():
             'external_ip': net_ip,
             'external_port': 31985,
             'webrtc_play': f'webrtc://{net_ip}:31985/{reqjson["app"]}/{reqjson["stream"]}{reqjson["param"]}',
-            'duration': duration, 
+            'duration': duration,
             'filename': os.path.basename(reqjson['file'])})
     os.remove(localfile)
     return '0'
