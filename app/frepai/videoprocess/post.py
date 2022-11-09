@@ -311,14 +311,15 @@ def _post_stdwave(pigeon, args, progress_cb):# {{{
         stdwave_data = np.load(f'{cache_path}/stdwave_data.npy')
         stdwave_post = np.load(f'{cache_path}/stdwave_post.npy')
         N, T = len(stdwave_data), pigeon['stdwave_threshold']
-        fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(120, 8), sharex=True, tight_layout=False)
+        figwidth = min(120, int(all_frames_count / 100))
+        fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(figwidth, 8), sharex=True, tight_layout=False)
         plt.subplots_adjust(left=0, bottom=0, right=1, top=1, hspace=0, wspace=0)
         plt.xlim(0, N)
         axes[0].scatter(range(N), stdwave_post)
         axes[0].axhline(y=T, color='r', marker='o', linestyle='-', linewidth=5)
         axes[0].axhline(y=mean, color='g', marker='o', linestyle='-', linewidth=5)
         axes[0].axhline(y=std, color='b', marker='o', linestyle='-', linewidth=5)
-        for i in range(0, N - stdwave_distance_size, 1800):
+        for i in range(0, N - stdwave_distance_size, 2 * stdwave_distance_size):
             axes[0].plot((i, i + stdwave_window_size), (T, T), 'bo-', linewidth=10)
             axes[0].plot((i, i + stdwave_distance_size), (mean, mean), 'bo-', linewidth=10)
         axes[1].scatter(range(N), stdwave_data)
@@ -332,6 +333,7 @@ def _post_stdwave(pigeon, args, progress_cb):# {{{
         imgw, imgh = int(imgw), int(imgh)
         image = image.reshape((imgh, imgw, -1))
         image = cv2.cvtColor(image, cv2.COLOR_RGBA2BGR)
+        plt.close(fig=fig)
 
         cv2.imwrite(f'{cache_path}/stdwave.jpg', image)
         pigeon['upload_files'].append('stdwave.jpg')
@@ -880,6 +882,8 @@ def video_postprocess(pigeon, progress_cb=None):
 
     with open(f'{cache_path}/config.json', 'r') as fr:
         args = DotDict(json.load(fr))
+
+    plt.close('all')
 
     if 'stdwave_window_size' in pigeon:
         pigeon = _post_stdwave(pigeon, args, _send_progress)

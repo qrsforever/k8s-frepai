@@ -210,6 +210,7 @@ def video_preprocess(args, progress_cb=None):
 
     area, frames_invalid = w * h, False
     if w < 0 or h < 0 or area < MIN_AREA_THRESH:
+        cap.release()
         raise HandlerError(80003, f'invalid focus box[{args.focus_box}]!')
 
     if 'diffimpulse_tracker_enable' not in args:
