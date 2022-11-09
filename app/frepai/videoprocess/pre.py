@@ -162,16 +162,23 @@ def video_preprocess(args, progress_cb=None):
             progress_cb(resdata)
             logger.info(f"{round(x, 2)} {resdata['progress']}")
 
-    if 'https://' in args.video:
-        segs = args.video[8:].split('/')
+    video_path = args.video
+    logger.info(f'from: {video_path}')
+
+    # TODO
+    source_url_convert = args.get('source_url_convert', False)
+    logger.info(f'source_url_convert: {source_url_convert}')
+    if source_url_convert and 'live' in video_path:
+        video_path = video_path.replace('live', 'datasets/factory').replace('videos/', '')
+        logger.info(f'TODO convert url: {video_path}')
+
+    if 'https://' in video_path:
+        segs = video_path[8:].split('/')
         vname = segs[-1].split('.')[0]
         coss3_path = os.path.join('/', *segs[1:-2], 'outputs', vname, 'repnet_tf')
     else:
         vname = 'unknow'
         coss3_path = ''
-
-    video_path = args.video
-    logger.info(f'from: {video_path}')
 
     cache_path = f'/data/cache/{int(time.time() * 1000)}/{vname}'
     mkdir_p(cache_path)
@@ -184,7 +191,7 @@ def video_preprocess(args, progress_cb=None):
         try:
             video_path = easy_wget(video_path, f'{cache_path}/source.mp4')
         except Exception as err:
-            raise HandlerError(80001, f'wget video[{args.video}] fail [{err}]!')
+            raise HandlerError(80001, f'wget video[{video_path}] fail [{err}]!')
 
     logger.info(f'to: {video_path}')
     cap = cv2.VideoCapture(video_path)
@@ -376,6 +383,7 @@ def video_preprocess(args, progress_cb=None):
     pre_frame_gray = None # np.zeros((h, w, 1), dtype=np.uint8)
 
     ret, frame_raw = cap.read()
+    progress_step = int(cnt / 5)
     while ret:
         keep_flag = False
         if black_box is not None:
@@ -552,7 +560,7 @@ def video_preprocess(args, progress_cb=None):
             keepframe.append(frame_rgb)
             keepidxes.append(idx)
 
-        if idx % 888 == 0:
+        if idx % progress_step == 0:
             _send_progress(100 * idx / cnt)
 
         idx += 1
