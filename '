@@ -103,7 +103,6 @@ def _local_maxima(x):# {{{
 def _find_peaks(peaks_values, height=(), distance=-1, prominence=(), width=(), wlen=-1, rel_height=0.5, min_thresh=-1):
     SS = [-1] * 5
     peaks_indices = _local_maxima(peaks_values)
-    logger.info(f'123--->{peaks_indices}')
     SS[0] = len(peaks_indices)
 
     if isinstance(height, (int, float)):
@@ -275,38 +274,8 @@ def _engine_featpeak(pigeon, progress_cb):
 
 
 def _engine_direction(pigeon, progress_cb):
-    direction_inverse = pigeon['direction_inverse']
-    direction_scale_threshold = pigeon['direction_scale_threshold']
+    direction_lr_scale = pigeon['direction_lr_scale']
     direction_window_size = pigeon['direction_window_size']
-
-    progress_cb(10)
-    direction_data = np.load(f'{pigeon["cache_path"]}/direction_data.npy')
-    mfocus, lfocus, rfocus = np.split(direction_data, 3, axis=1)
-    mmask = np.where(mfocus > np.mean(mfocus))[0]
-    lfocus_scale = lfocus[mmask] / mfocus[mmask]
-    rfocus_scale = rfocus[mmask] / mfocus[mmask]
-    lr_mask = np.where((lfocus_scale > direction_scale_threshold * rfocus_scale))[0]
-    rl_mask = np.where((rfocus_scale > direction_scale_threshold * lfocus_scale))[0]
-    progress_cb(20)
-    factor = -1 if direction_inverse else 1
-    result = np.zeros((len(mfocus)))
-    result[mmask[lr_mask]] = factor * direction_window_size
-    result[mmask[rl_mask]] = -factor * direction_window_size
-    features = np.delete(result, np.argwhere((result == 0)))
-    progress_cb(30)
-    pad_r_size = (direction_window_size - 1) // 2
-    pad_l_size = direction_window_size - 1 - pad_r_size
-    features = np.pad(features, (pad_r_size, pad_l_size), constant_values=0)
-    logger.info(f'--->: {features}')
-    features = np.mean(np.lib.stride_tricks.sliding_window_view(features, direction_window_size), axis=-1)
-    progress_cb(40)
-    # def _find_peaks(peaks_values, height=(), distance=-1, prominence=(), width=(), wlen=-1, rel_height=0.5, min_thresh=-1):
-    peaks_indices, properties = _find_peaks(
-            features,
-            (0.4, 1.0), 25)
-    progress_cb(100, True)
-    logger.info(f'{peaks_indices} {properties}')
-    return pigeon
 
 
 ##################################################################
@@ -441,7 +410,7 @@ def engine_process(pigeon, progress_cb=None):# {{{
     if not os.path.isdir(pigeon['cache_path']):
         raise HandlerError(82002, f'cache_path[{cache_path}] cannot open!')
 
-    def _send_progress(x, fix=False):
+    def _send_progress(x):
         if progress_cb:
             pigeon['progress'] = round(40 + 0.2 * x, 2)
             progress_cb(pigeon)

@@ -24,6 +24,7 @@ from frepai.utils.draw import get_rect_points
 from frepai.utils.logger import EasyLogger as logger
 from frepai.utils.errcodes import HandlerError
 from frepai.utils import mkdir_p, rmdir_p, easy_wget
+from frepai.utils.oss import coss3_delete
 from scipy import stats
 
 ffmpeg_args = '-preset ultrafast -vcodec libx264 -pix_fmt yuv420p'
@@ -143,9 +144,25 @@ def gray_image_blur(frame_gray, mode, kernel):
     return frame_gray
 
 
+g_switch_names = [
+    "rmstill_frame_enable", "color_tracker_enable", 
+    "direction_tracker_enable", "diffimpulse_tracker_enable",
+    "featpeak_tracker_enbale", "stdwave_tracker_enable"]
+
+
 def video_preprocess(args, progress_cb=None):
     if 'dev_args' in args and len(args['dev_args']) > 0:
+        args.update({key: False for key in g_switch_names})
         args.update(json.loads(args['dev_args']))
+
+        check_enable_ok = False
+        for sw in g_switch_names:
+            if sw in args and args[sw]:
+                check_enable_ok = True
+                break
+        if not check_enable_ok:
+            logger.warning('error, no enable')
+            args['stdwave_tracker_enable'] = True
 
     args = DotDict(args)
 
@@ -154,28 +171,22 @@ def video_preprocess(args, progress_cb=None):
     # logger.info(args)
     debug_data = []
 
-    resdata = {'errno': 0, 'pigeon': args.pigeon, 'devmode': devmode, 'task': 'pre', 'upload_files': []}
+    resdata = {'errno': 0, 'pigeon': args.pigeon, 'devmode': devmode, 'task': 'pre', 'sumcnt': 0, 'upload_files': []}
 
-    def _send_progress(x):
+    def _send_progress(x, fix=False):
         if progress_cb:
-            resdata['progress'] = round(0.4 * x, 2)
+            resdata['progress'] = x if fix else round(0.4 * x, 2)
             progress_cb(resdata)
             logger.info(f"{round(x, 2)} {resdata['progress']}")
 
     video_path = args.video
     logger.info(f'from: {video_path}')
 
-    # TODO
-    source_url_convert = args.get('source_url_convert', False)
-    logger.info(f'source_url_convert: {source_url_convert}')
-    if source_url_convert and 'live' in video_path:
-        video_path = video_path.replace('live', 'datasets/factory').replace('videos/', '')
-        logger.info(f'TODO convert url: {video_path}')
-
     if 'https://' in video_path:
         segs = video_path[8:].split('/')
         vname = segs[-1].split('.')[0]
         coss3_path = os.path.join('/', *segs[1:-2], 'outputs', vname, 'repnet_tf')
+        coss3_delete(coss3_path[1:], logger)
     else:
         vname = 'unknow'
         coss3_path = ''
@@ -220,9 +231,6 @@ def video_preprocess(args, progress_cb=None):
         cap.release()
         raise HandlerError(80003, f'invalid focus box[{args.focus_box}]!')
 
-    if 'diffimpulse_tracker_enable' not in args:
-        args.diffimpulse_tracker_enable = False
-
     debug_write_video = False
     if 'debug_pre_write_video' in args:
         debug_write_video = args['debug_pre_write_video']
@@ -234,6 +242,8 @@ def video_preprocess(args, progress_cb=None):
     global_blur_type = args.get('global_blur_type', 'none')
     global_filter_kernel = args.get('global_filter_kernel', 3)
     global_feature_select = args.get('global_feature_select', 'mean')
+    global_feature_minval = args.get('global_feature_minval', 10)
+    global_feature_minnum = args.get('global_feature_minnum', 50)
     global_hdiff_rate = args.get('global_hdiff_rate', 1.0)
     global_bg_window = args.get('global_bg_window', 0)
     global_bg_atonce = args.get('global_bg_atonce', True)
@@ -276,6 +286,17 @@ def video_preprocess(args, progress_cb=None):
                         global_bg_frame[0] = frame
                         return frame
         return global_bg_frame[1]
+
+    def _calc_feat(img):
+        feat = np.sort(img.ravel())
+        feat = feat[int(-1 * global_hdiff_rate * len(feat)):]
+        if global_feature_select == 'std':
+            feat = int(np.std(feat))
+        elif global_feature_select == 'mean':
+            feat = int(np.mean(feat))
+        else:
+            raise HandlerError(80004, f'unkown global_feature_select [{global_feature_select}]')
+        return 0.000001 if feat == 0 else feat
 
     if args.rmstill_frame_enable:
         area_rate_thres = args.get('rmstill_rate_threshold', 0.001)
@@ -326,6 +347,13 @@ def video_preprocess(args, progress_cb=None):
         resdata['featpeak_width_minmax'] = (_width, -1) if isinstance(_width, int) else _width
         resdata['featpeak_prominence_minmax'] = (_prominence, -1) if isinstance(_prominence, int) else _prominence
 
+    elif args.direction_tracker_enable:
+        direction_arrow = args.get('direction_arrow', 'lr') # lr, rl, tb, bt
+        direction_agg_axis = 0 if direction_arrow in ('rl', 'lr') else 1
+        resdata['direction_inverse'] = True if direction_arrow in ('rl', 'bt') else False
+        resdata['direction_scale_threshold'] = args.get('direction_scale_threshold', 2.0)
+        resdata['direction_window_size'] = args.get('direction_window_size', 10)
+
     elif args.stdwave_tracker_enable:
         # TODO use global instead
         stdwave_feature_select = args.get('stdwave_feature_select', None)
@@ -375,8 +403,8 @@ def video_preprocess(args, progress_cb=None):
 
     tile_shuffle = args.get('input_tile_shuffle', False)
 
-    stdwave, diffimpulse, featpeak = [], [], []
-    keepframe, keepidxes = [], []
+    stdwave, diffimpulse, featpeak, direction = [], [], [], []
+    keepframe, keepidxes, half_focus_width = [], [], -1
     if devmode:
         binframes, binpoints = [], []
     idx, frame_tmp = 0, np.zeros((h, w), dtype=np.uint8)
@@ -492,31 +520,32 @@ def video_preprocess(args, progress_cb=None):
             if pre_frame_gray is None:
                 pre_frame_gray = frame_gray
             frame_tmp = cv2.absdiff(frame_gray, pre_frame_gray)
-            feat = np.sort(frame_tmp.ravel())
-            feat = feat[int(-1 * global_hdiff_rate * len(feat)):]
-            if global_feature_select == 'std':
-                feat = int(np.std(feat))
-            elif global_feature_select == 'mean':
-                feat = int(np.mean(feat))
-            else:
-                raise HandlerError(80004, f'unkown global_feature_select [{global_feature_select}]')
+            feat = _calc_feat(frame_tmp)
             featpeak.append(feat)
             pre_frame_gray = _find_bg(idx, frame_gray, feat, featpeak)
+
+        elif args.direction_tracker_enable:
+            if pre_frame_gray is None:
+                pre_frame_gray = frame_gray
+            frame_tmp = cv2.absdiff(frame_gray, pre_frame_gray)
+            if half_focus_width < 0:
+                if direction_agg_axis == 0:
+                    half_focus_width = int(0.5 * frame_tmp.shape[1])
+                else:
+                    half_focus_width = int(0.5 * frame_tmp.shape[0])
+            data = np.mean(frame_tmp, axis=direction_agg_axis)
+            mfocus = np.mean(data) + 0.001
+            l_mfocus = np.mean(data[:half_focus_width])
+            r_mfocus = np.mean(data[half_focus_width:])
+            direction.append([mfocus, l_mfocus, r_mfocus])
+            pre_frame_gray = frame_gray
 
         elif args.stdwave_tracker_enable:
             # TODO use global
             if pre_frame_gray is None:
                 pre_frame_gray = frame_gray
             frame_tmp = cv2.absdiff(frame_gray, pre_frame_gray)
-            feat = np.sort(frame_tmp.ravel())
-            feat = feat[int(-1 * global_hdiff_rate * len(feat)):]
-            if global_feature_select == 'std':
-                feat = int(np.std(feat))
-            elif global_feature_select == 'mean':
-                feat = int(np.mean(feat))
-            else:
-                raise HandlerError(80004, f'unkown global_feature_select args [{global_feature_select}]')
-
+            feat = _calc_feat(frame_tmp)
             stdwave.append(feat)
             pre_frame_gray = _find_bg(idx, frame_gray, feat, stdwave)
 
@@ -571,18 +600,23 @@ def video_preprocess(args, progress_cb=None):
         logger.info(debug_data)
 
     if args.stdwave_tracker_enable:
-        # TODO
-        if devmode:
-            logger.info(stdwave)
         stdwave = np.asarray(stdwave)
-        if len(stdwave[stdwave > 10]) < 50:
-            resdata['progress'] = 100
-            if progress_cb:
-                progress_cb(resdata)
+        if len(stdwave[stdwave > global_feature_minval]) < global_feature_minnum:
+            _send_progress(100, True)
             rmdir_p(os.path.dirname(cache_path))
             return None
         np.save(f'{cache_path}/stdwave_data.npy', stdwave)
         resdata['upload_files'].append('stdwave_data.npy')
+    elif args.direction_tracker_enable:
+        direction = np.asarray(direction)
+        features = direction[:, 0]
+        if len(features[features > global_feature_minval]) < global_feature_minnum:
+            _send_progress(100, True)
+            rmdir_p(os.path.dirname(cache_path))
+            return None
+        np.save(f'/data/direction_data.npy', direction)
+        _send_progress(100, True)
+        return None
     elif args.featpeak_tracker_enbale:
         if devmode:
             logger.info(featpeak)
@@ -601,9 +635,7 @@ def video_preprocess(args, progress_cb=None):
 
         if frames_invalid or len(keepframe) < 32:
             logger.warning(f'invalid[{frames_invalid}] or valid frames count: {len(keepframe)} <= 32')
-            resdata['progress'] = 100
-            if progress_cb:
-                progress_cb(resdata)
+            _send_progress(100, True)
             rmdir_p(os.path.dirname(cache_path))
             return None
 

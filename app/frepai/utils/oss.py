@@ -58,3 +58,36 @@ def coss3_put(local_path, prefix_map=None):
         _upload_file(local_path)
 
     return result
+
+
+def coss3_list(prefix, recurive=False):
+    delimiter = '' if recurive else '/'
+    marker = ""
+    result = []
+    while True:
+        response = coss3_client.list_objects(
+            Bucket=bucket_name, Prefix=prefix, Marker=marker, MaxKeys=50, Delimiter=delimiter)
+
+        if 'Contents' in response:
+            for content in response['Contents']:
+                result.append(content['Key'])
+
+        if 'CommonPrefixes' in response:
+            for folder in response['CommonPrefixes']:
+                result.append(folder['Prefix'])
+
+        if response['IsTruncated'] == 'false':
+            break
+
+        marker = response["NextMarker"]
+    return result
+
+
+def coss3_delete(path, logger=None):
+    if logger:
+        logger.info(path)
+    files = coss3_list(path, recurive=True)
+    for key in files:
+        if logger:
+            logger.info(key)
+        coss3_client.delete_object(Bucket=bucket_name, Key=key)
