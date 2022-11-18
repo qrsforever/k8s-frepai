@@ -224,6 +224,13 @@ def video_preprocess(args, progress_cb=None):
         w = focus_x2 - focus_x1
         h = focus_y2 - focus_y1
 
+    def _get_box_frame(img):
+        if black_box is not None:
+            img[black_y1:black_y2, black_x1:black_x2, :] = 0
+        if focus_box is not None:
+            img = img[focus_y1:focus_y2, focus_x1:focus_x2, :]
+        return img
+
     logger.info(f'width[{width} vs {w}] height[{height} vs {h}] framerate[{fps}] count[{all_cnt}]')
 
     area, frames_invalid = w * h, False
@@ -237,7 +244,8 @@ def video_preprocess(args, progress_cb=None):
     if debug_write_video:
         writer = cv2.VideoWriter(f'{cache_path}/_pre_video.mp4', cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
 
-    global_bg_frame = [None, None]
+    global_bg_frame_, global_gray_frame = [None, None], None
+    global_remove_shadow = args.get('global_remove_shadow', None)
     global_grap_step = int(fps * args.get('global_grap_interval', -1))
     global_blur_type = args.get('global_blur_type', 'none')
     global_filter_kernel = args.get('global_filter_kernel', 3)
@@ -245,8 +253,11 @@ def video_preprocess(args, progress_cb=None):
     global_feature_minval = args.get('global_feature_minval', 10)
     global_feature_minnum = args.get('global_feature_minnum', 50)
     global_hdiff_rate = args.get('global_hdiff_rate', 1.0)
+    global_bg_finding = args.get('global_bg_finding', False)
     global_bg_window = args.get('global_bg_window', 0)
     global_bg_atonce = args.get('global_bg_atonce', True)
+    if global_bg_finding:
+        global_bg_window = 0
     if global_bg_window > 0:
         global_bgw_buffer = [(0, None)] * global_bg_window
 
@@ -272,31 +283,50 @@ def video_preprocess(args, progress_cb=None):
 
     resdata['video_path'] = video_path
 
+    # TODO will remove
     def _find_bg(idx, img, feat, feats):
-        if global_bg_frame[1] is None:
-            global_bg_frame[1] = img
+        if global_bg_frame_[1] is None:
+            global_bg_frame_[1] = img
         if global_bg_window > 0:
-            if global_bg_frame[0] is not None and global_bg_atonce:
-                return global_bg_frame[0]
+            if global_bg_frame_[0] is not None and global_bg_atonce:
+                return global_bg_frame_[0]
             global_bgw_buffer[idx % global_bg_window] = (feat, img)
             if idx >= global_bg_window:
                 mode = stats.mode(feats[-1 * global_bg_window:])[0][0]
                 for feat, frame in global_bgw_buffer:
                     if feat == mode:
-                        global_bg_frame[0] = frame
+                        global_bg_frame_[0] = frame
                         return frame
-        return global_bg_frame[1]
+        return global_bg_frame_[1]
 
-    def _calc_feat(img):
+    def _calc_feat(img, dtype=1):
         feat = np.sort(img.ravel())
-        feat = feat[int(-1 * global_hdiff_rate * len(feat)):]
-        if global_feature_select == 'std':
-            feat = int(np.std(feat))
-        elif global_feature_select == 'mean':
-            feat = int(np.mean(feat))
+        if isinstance(global_hdiff_rate, (tuple, list)):
+            low, hight = int(global_hdiff_rate[0] * len(feat)), int(global_hdiff_rate[1] * len(feat))
+            feat = feat[-hight: -low]
+        else:
+            feat = feat[int(-1 * global_hdiff_rate * len(feat)):]
+        if global_feature_select == 'mean':
+            feat = np.mean(feat)
+        elif global_feature_select == 'std':
+            feat = np.std(feat)
         else:
             raise HandlerError(80004, f'unkown global_feature_select [{global_feature_select}]')
-        return 0.000001 if feat == 0 else feat
+        if dtype == 1: # int
+            feat = int(feat)
+        return 0.001 if feat == 0 else feat
+
+    def _remove_shadow(img, dksize=3, bksize=5, normalize=True):
+        result_planes = []
+        bgr_planes = cv2.split(img)
+        for plane in bgr_planes:
+            img = cv2.dilate(plane, np.ones((dksize,dksize), np.uint8))
+            img = cv2.medianBlur(img, bksize)
+            img = 255 - cv2.absdiff(plane, img)
+            if normalize:
+                img = cv2.normalize(img, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8UC1)
+            result_planes.append(img)
+        return cv2.merge(result_planes)
 
     if args.rmstill_frame_enable:
         area_rate_thres = args.get('rmstill_rate_threshold', 0.001)
@@ -403,23 +433,54 @@ def video_preprocess(args, progress_cb=None):
 
     tile_shuffle = args.get('input_tile_shuffle', False)
 
+    # find bg
+    if global_bg_finding:
+        np.random.seed(all_cnt)
+        sample_size = 200 if all_cnt > 200 else all_cnt
+        indexes = np.random.choice(range(all_cnt), size=sample_size, replace=False)
+        feats = []
+        feat2idx = {}
+        for i in sorted(indexes):
+            cap.set(cv2.CAP_PROP_POS_FRAMES, i)
+            _, frame = cap.read()
+            frame = _get_box_frame(frame)
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            gray = cv2.erode(gray, np.ones((3, 3), np.uint8), iterations=1)
+            gray = cv2.dilate(gray, np.ones((3, 3), np.uint8), iterations=1)
+            real_feat = int(np.mean(gray))
+            feat = round(real_feat / 10) * 10
+            feats.append(feat)
+            if feat not in feat2idx:
+                feat2idx[feat] = {}
+            if real_feat not in feat2idx[feat]:
+                feat2idx[feat][real_feat] = []
+            feat2idx[feat][real_feat].append(i)
+        mode = stats.mode(feats)[0][0]
+        max_cnt, vid_idx = -1, -1
+        for value in feat2idx[mode].values():
+            n = len(value) 
+            if n > max_cnt:
+                max_cnt = n
+                vid_idx = value[0]
+        cap.set(cv2.CAP_PROP_POS_FRAMES, vid_idx)
+        _, frame = cap.read()
+        global_gray_frame = cv2.cvtColor(_get_box_frame(frame), cv2.COLOR_BGR2GRAY)
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+
     stdwave, diffimpulse, featpeak, direction = [], [], [], []
     keepframe, keepidxes, half_focus_width = [], [], -1
     if devmode:
         binframes, binpoints = [], []
     idx, frame_tmp = 0, np.zeros((h, w), dtype=np.uint8)
     pre_frame_gray = None # np.zeros((h, w, 1), dtype=np.uint8)
-
     ret, frame_raw = cap.read()
     progress_step = int(cnt / 5)
     while ret:
         keep_flag = False
-        if black_box is not None:
-            frame_raw[black_y1:black_y2, black_x1:black_x2, :] = 0
-        if focus_box is not None:
-            frame_bgr = frame_raw[focus_y1:focus_y2, focus_x1:focus_x2, :]
-        else:
-            frame_bgr = frame_raw
+        frame_bgr = _get_box_frame(frame_raw)
+
+        if global_remove_shadow is not None and isinstance(global_remove_shadow, (tuple, list)):
+            frame_bgr = _remove_shadow(frame_bgr, *global_remove_shadow)
 
         # frame_bgr = cv2.fastNlMeansDenoisingColored(frame_bgr,None, 10, 10, 7, 21)
         frame_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
@@ -521,24 +582,40 @@ def video_preprocess(args, progress_cb=None):
                 pre_frame_gray = frame_gray
             frame_tmp = cv2.absdiff(frame_gray, pre_frame_gray)
             feat = _calc_feat(frame_tmp)
+            feat = int(np.mean(feat))
             featpeak.append(feat)
             pre_frame_gray = _find_bg(idx, frame_gray, feat, featpeak)
 
         elif args.direction_tracker_enable:
-            if pre_frame_gray is None:
-                pre_frame_gray = frame_gray
-            frame_tmp = cv2.absdiff(frame_gray, pre_frame_gray)
+            if global_gray_frame is not None:
+                frame_tmp = cv2.absdiff(frame_gray, global_gray_frame)
+            else:
+                if pre_frame_gray is None:
+                    pre_frame_gray = frame_gray
+                frame_tmp = cv2.absdiff(frame_gray, pre_frame_gray)
             if half_focus_width < 0:
                 if direction_agg_axis == 0:
                     half_focus_width = int(0.5 * frame_tmp.shape[1])
                 else:
                     half_focus_width = int(0.5 * frame_tmp.shape[0])
             data = np.mean(frame_tmp, axis=direction_agg_axis)
-            mfocus = np.mean(data) + 0.001
-            l_mfocus = np.mean(data[:half_focus_width])
-            r_mfocus = np.mean(data[half_focus_width:])
-            direction.append([mfocus, l_mfocus, r_mfocus])
+            lfeat = _calc_feat(data[:half_focus_width])
+            rfeat = _calc_feat(data[half_focus_width:])
+            mfeat = abs(lfeat - rfeat)
+            direction.append([mfeat if mfeat != 0 else 0.01, lfeat, rfeat])
             pre_frame_gray = frame_gray
+            if debug_write_video:
+                if global_remove_shadow is not None:
+                    frame_raw[focus_y1:focus_y2, focus_x1:focus_x2, :] = frame_bgr
+                else:
+                    frame_raw[focus_y1:focus_y2, focus_x1:focus_x2, :] = 0
+                cv2.putText(
+                        frame_raw,
+                        '%d %.2f %.2f %.2f' % (idx, mfeat, lfeat, rfeat),
+                        (50, 50),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.6, (0, 0, 0), 2)
+                writer.write(frame_raw)
 
         elif args.stdwave_tracker_enable:
             # TODO use global
@@ -615,6 +692,9 @@ def video_preprocess(args, progress_cb=None):
             rmdir_p(os.path.dirname(cache_path))
             return None
         np.save(f'/data/direction_data.npy', direction)
+        if debug_write_video:
+            writer.release()
+            os.system(f'ffmpeg -an -i {cache_path}/_pre_video.mp4 {ffmpeg_args} /data/pre-video.mp4 2>/dev/null')
         _send_progress(100, True)
         return None
     elif args.featpeak_tracker_enbale:
