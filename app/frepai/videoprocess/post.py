@@ -667,8 +667,6 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
         })
     json_result['frames_period'] = frames_info
 
-    del within_period, per_frame_counts
-
     if devmode:
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
@@ -707,10 +705,11 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
         )
 
         if args['rmstill_frame_enable']:
-            bottom_text += ' %s %s %s' % (
+            bottom_text += ' %s %s %s %s' % (
                 'A:%.4f' % args['rmstill_rate_threshold'],
                 'B:%d' % args['rmstill_bin_threshold'],
-                'M:%.4f' % (float(1) / ((fy2 - fy1) * (fx2 - fx1)))
+                'M:%.4f' % (float(1) / ((fy2 - fy1) * (fx2 - fx1))),
+                'T:%.2f' % pigeon['within_period_threshold']
             )
         if args['color_tracker_enable']:
             bottom_text += ' %s %s %s %s' % (
@@ -785,9 +784,10 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
             except Exception:
                 logger.error(traceback.format_exc(limit=6))
             cv2.putText(frame_bgr,
-                    '%dX%d %.1f S:%d C:%.1f/%.1f %s %s' % (width, height,
+                    '%dX%d %.1f S:%d C:%.1f/%.1f %s %s %s' % (width, height,
                         fps, chosen_stride, sum_counts[idx], sum_counts[-1],
                         'L:%.2f' % args.tsm_last_threshold if args.tsm_last_enable else '',
+                        'P:%.2f' % within_period[idx],
                         'ST' if is_still_frames[idx] else ''),
                     (2, int(0.06 * height)),
                     cv2.FONT_HERSHEY_SIMPLEX,
@@ -854,6 +854,8 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
         json.dump(json_result, fw, indent=4)
     pigeon['upload_files'].append('result.json')
     pigeon['target_json'] = f'{coss3_domain}{coss3_path}/result.json'
+
+    del within_period, per_frame_counts
 
     return pigeon# }}}
 

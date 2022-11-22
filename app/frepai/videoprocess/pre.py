@@ -337,12 +337,12 @@ def video_preprocess(args, progress_cb=None):
         rmstill_area_thres = math.ceil(area_rate_thres * area)
         rmstill_filter_kernel = args.get('rmstill_filter_kernel', 3)
         rmstill_noise_kernel = np.ones((rmstill_filter_kernel, rmstill_filter_kernel), np.uint8)
-
         if area < SMALL_AREA_THRESH:
             rmstill_white_thres = int(args.get('rmstill_white_rate', 0.1) * area)
             rmstill_white_window = args.get('rmstill_white_window', 10)
             rmstill_white_buffer = np.zeros((rmstill_white_window, ))
             frames_invalid = True
+        resdata['within_period_threshold'] = args.get('within_period_threshold', 0.5)
 
         logger.info(f'rmstill: ({area}, {rmstill_area_thres}, {rmstill_bin_threshold}, {rmstill_noise_level})')
 
@@ -409,8 +409,10 @@ def video_preprocess(args, progress_cb=None):
 
         stdwave_sub_average = args.get('stdwave_sub_average', True)
         stdwave_sigma_count = args.get('stdwave_sigma_count', 3.0)
-        stdwave_window_size = args.get('stdwave_window_size', 50)
-        stdwave_distance_size = args.get('stdwave_distance_size', 150)
+        seconds = args.get('stdwave_window_secs', 0)
+        stdwave_window_size = int(fps * seconds) if seconds > 0 else args.get('stdwave_window_size', 50)
+        seconds = args.get('stdwave_distance_secs', 0)
+        stdwave_distance_size = int(fps * seconds) if seconds > 0 else args.get('stdwave_distance_size', 150)
         stdwave_minstd_thresh = args.get('stdwave_minstd_thresh', 0.5)
         resdata['stdwave_sigma_count'] = stdwave_sigma_count
         resdata['stdwave_sub_average'] = stdwave_sub_average
@@ -442,7 +444,10 @@ def video_preprocess(args, progress_cb=None):
         feat2idx = {}
         for i in sorted(indexes):
             cap.set(cv2.CAP_PROP_POS_FRAMES, i)
-            _, frame = cap.read()
+            ret, frame = cap.read()
+            if not ret:
+                logger.warning(f'read {i} frame error.')
+                continue
             frame = _get_box_frame(frame)
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             gray = cv2.erode(gray, np.ones((3, 3), np.uint8), iterations=1)
@@ -619,12 +624,18 @@ def video_preprocess(args, progress_cb=None):
 
         elif args.stdwave_tracker_enable:
             # TODO use global
-            if pre_frame_gray is None:
-                pre_frame_gray = frame_gray
-            frame_tmp = cv2.absdiff(frame_gray, pre_frame_gray)
+            # if pre_frame_gray is None:
+            #     pre_frame_gray = frame_gray
+            # frame_tmp = cv2.absdiff(frame_gray, pre_frame_gray)
+            if global_gray_frame is not None:
+                frame_tmp = cv2.absdiff(frame_gray, global_gray_frame)
+            else:
+                if pre_frame_gray is None:
+                    pre_frame_gray = frame_gray
+                frame_tmp = cv2.absdiff(frame_gray, pre_frame_gray)
             feat = _calc_feat(frame_tmp)
             stdwave.append(feat)
-            pre_frame_gray = _find_bg(idx, frame_gray, feat, stdwave)
+            # pre_frame_gray = _find_bg(idx, frame_gray, feat, stdwave)
 
             if debug_write_video: # debug
                 if len(stdwave) < 500:
