@@ -145,7 +145,7 @@ def gray_image_blur(frame_gray, mode, kernel):
 
 
 g_switch_names = [
-    "rmstill_frame_enable", "color_tracker_enable", 
+    "rmstill_frame_enable", "color_tracker_enable",
     "direction_tracker_enable", "diffimpulse_tracker_enable",
     "featpeak_tracker_enbale", "stdwave_tracker_enable"]
 
@@ -223,13 +223,19 @@ def video_preprocess(args, progress_cb=None):
         focus_x1, focus_y1, focus_x2, focus_y2 = focus_box
         w = focus_x2 - focus_x1
         h = focus_y2 - focus_y1
+    check_box = args.get('check_box', None)
+    if check_box is not None:
+        check_x1, check_y1, check_x2, check_y2 = get_rect_points(width, height, check_box)
 
     def _get_box_frame(img):
+        vbox, cbox = None, None
         if black_box is not None:
             img[black_y1:black_y2, black_x1:black_x2, :] = 0
         if focus_box is not None:
-            img = img[focus_y1:focus_y2, focus_x1:focus_x2, :]
-        return img
+            vbox = img[focus_y1:focus_y2, focus_x1:focus_x2, :]
+        if check_box is not None:
+            cbox = img[check_y1:check_y2, check_x1:check_x2, :]
+        return vbox, cbox
 
     logger.info(f'width[{width} vs {w}] height[{height} vs {h}] framerate[{fps}] count[{all_cnt}]')
 
@@ -244,7 +250,7 @@ def video_preprocess(args, progress_cb=None):
     if debug_write_video:
         writer = cv2.VideoWriter(f'{cache_path}/_pre_video.mp4', cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
 
-    global_bg_frame_, global_gray_frame = [None, None], None
+    global_gray_frame, global_gray_check = None, None
     global_remove_shadow = args.get('global_remove_shadow', None)
     global_grap_step = int(fps * args.get('global_grap_interval', -1))
     global_blur_type = args.get('global_blur_type', 'none')
@@ -254,12 +260,63 @@ def video_preprocess(args, progress_cb=None):
     global_feature_minnum = args.get('global_feature_minnum', 50)
     global_hdiff_rate = args.get('global_hdiff_rate', 1.0)
     global_bg_finding = args.get('global_bg_finding', False)
-    global_bg_window = args.get('global_bg_window', 0)
-    global_bg_atonce = args.get('global_bg_atonce', True)
+
+    # find bg
+    resdata['global_bg_focus'] = 0
+    resdata['global_bg_check'] = 0
     if global_bg_finding:
-        global_bg_window = 0
-    if global_bg_window > 0:
-        global_bgw_buffer = [(0, None)] * global_bg_window
+        np.random.seed(all_cnt)
+        sample_size = 200 if all_cnt > 200 else all_cnt
+        indexes = np.random.choice(range(all_cnt), size=sample_size, replace=False)
+        focus_feats, focus_feat2idx = [], {}
+        check_feats, check_feat2idx = [], {}
+
+        def _box_feat(img, feats, feat2idx):
+            gray = cv2.cvtColor(frame_focus, cv2.COLOR_BGR2GRAY)
+            gray = cv2.erode(gray, np.ones((3, 3), np.uint8), iterations=1)
+            gray = cv2.dilate(gray, np.ones((3, 3), np.uint8), iterations=1)
+            real_feat = int(np.mean(gray))
+            feat = round(real_feat / 10) * 10
+            feats.append(feat)
+            if feat not in feat2idx:
+                feat2idx[feat] = {}
+            if real_feat not in feat2idx[feat]:
+                feat2idx[feat][real_feat] = []
+            feat2idx[feat][real_feat].append(i)
+
+        def _mode_frame(feats, feat2idx):
+            mode = stats.mode(feats)[0][0]
+            max_cnt, vid_idx = -1, -1
+            for value in feat2idx[mode].values():
+                n = len(value)
+                if n > max_cnt:
+                    max_cnt = n
+                    vid_idx = value[0]
+            return int(vid_idx)
+
+        for i in sorted(indexes):
+            cap.set(cv2.CAP_PROP_POS_FRAMES, i)
+            ret, frame = cap.read()
+            if not ret:
+                logger.warning(f'read {i} frame error.')
+                continue
+            frame_focus, frame_check = _get_box_frame(frame)
+            _box_feat(frame_focus, focus_feats, focus_feat2idx)
+            if check_box is not None:
+                _box_feat(frame_check, check_feats, check_feat2idx)
+
+        vid_idx = _mode_frame(focus_feats, focus_feat2idx)
+        cap.set(cv2.CAP_PROP_POS_FRAMES, vid_idx)
+        _, frame = cap.read()
+        global_gray_frame = cv2.cvtColor(_get_box_frame(frame)[0], cv2.COLOR_BGR2GRAY)
+        resdata['global_bg_focus'] = vid_idx
+        if check_box is not None:
+            vid_idx = _mode_frame(check_feats, check_feat2idx)
+            cap.set(cv2.CAP_PROP_POS_FRAMES, vid_idx)
+            _, frame = cap.read()
+            global_gray_check = cv2.cvtColor(_get_box_frame(frame)[1], cv2.COLOR_BGR2GRAY)
+            resdata['global_bg_check'] = vid_idx
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
     if global_grap_step > 0:
         resdata['global_grap_step'] = global_grap_step
@@ -283,21 +340,25 @@ def video_preprocess(args, progress_cb=None):
 
     resdata['video_path'] = video_path
 
-    # TODO will remove
-    def _find_bg(idx, img, feat, feats):
-        if global_bg_frame_[1] is None:
-            global_bg_frame_[1] = img
-        if global_bg_window > 0:
-            if global_bg_frame_[0] is not None and global_bg_atonce:
-                return global_bg_frame_[0]
-            global_bgw_buffer[idx % global_bg_window] = (feat, img)
-            if idx >= global_bg_window:
-                mode = stats.mode(feats[-1 * global_bg_window:])[0][0]
-                for feat, frame in global_bgw_buffer:
-                    if feat == mode:
-                        global_bg_frame_[0] = frame
-                        return frame
-        return global_bg_frame_[1]
+    # global_bg_frame_ = [None, None]
+    # global_bg_window = args.get('global_bg_window', 0)
+    # global_bg_atonce = args.get('global_bg_atonce', True)
+    # if global_bg_window > 0:
+    #     global_bgw_buffer = [(0, None)] * global_bg_window
+    # def _find_bg(idx, img, feat, feats):
+    #     if global_bg_frame_[1] is None:
+    #         global_bg_frame_[1] = img
+    #     if global_bg_window > 0:
+    #         if global_bg_frame_[0] is not None and global_bg_atonce:
+    #             return global_bg_frame_[0]
+    #         global_bgw_buffer[idx % global_bg_window] = (feat, img)
+    #         if idx >= global_bg_window:
+    #             mode = stats.mode(feats[-1 * global_bg_window:])[0][0]
+    #             for feat, frame in global_bgw_buffer:
+    #                 if feat == mode:
+    #                     global_bg_frame_[0] = frame
+    #                     return frame
+    #     return global_bg_frame_[1]
 
     def _calc_feat(img, dtype=1):
         feat = np.sort(img.ravel())
@@ -385,28 +446,6 @@ def video_preprocess(args, progress_cb=None):
         resdata['direction_window_size'] = args.get('direction_window_size', 10)
 
     elif args.stdwave_tracker_enable:
-        # TODO use global instead
-        stdwave_feature_select = args.get('stdwave_feature_select', None)
-        if stdwave_feature_select is not None:
-            global_feature_select = stdwave_feature_select
-        stdwave_blur_type = args.get('stdwave_blur_type', None)
-        if stdwave_blur_type is not None:
-            global_blur_type = stdwave_blur_type
-        stdwave_filter_kernel = args.get('stdwave_filter_kernel', None)
-        if stdwave_filter_kernel is not None:
-            global_filter_kernel = stdwave_filter_kernel
-        stdwave_hdiff_rate = args.get('stdwave_hdiff_rate', None)
-        if stdwave_hdiff_rate is not None:
-            global_hdiff_rate = stdwave_hdiff_rate
-        stdwave_bg_atonce = args.get('stdwave_bg_atonce', None)
-        if stdwave_bg_atonce is not None:
-            global_bg_atonce = stdwave_bg_atonce
-        stdwave_bg_window = args.get('stdwave_bg_window', None)
-        if stdwave_bg_window is not None:
-            global_bg_window = stdwave_bg_window
-        if global_bg_window > 0:
-            global_bgw_buffer = [(0, None)] * global_bg_window
-
         stdwave_sub_average = args.get('stdwave_sub_average', True)
         stdwave_sigma_count = args.get('stdwave_sigma_count', 3.0)
         seconds = args.get('stdwave_window_secs', 0)
@@ -419,7 +458,6 @@ def video_preprocess(args, progress_cb=None):
         resdata['stdwave_window_size'] = stdwave_window_size
         resdata['stdwave_distance_size'] = stdwave_distance_size
         resdata['stdwave_minstd_thresh'] = stdwave_minstd_thresh
-        resdata['stdwave_bg_window'] = global_bg_window
         logger.info(f'stdwave_tracker: ({stdwave_sigma_count}, {stdwave_window_size}, {stdwave_distance_size})')
 
     elif args.diffimpulse_tracker_enable:
@@ -435,62 +473,31 @@ def video_preprocess(args, progress_cb=None):
 
     tile_shuffle = args.get('input_tile_shuffle', False)
 
-    # find bg
-    if global_bg_finding:
-        np.random.seed(all_cnt)
-        sample_size = 200 if all_cnt > 200 else all_cnt
-        indexes = np.random.choice(range(all_cnt), size=sample_size, replace=False)
-        feats = []
-        feat2idx = {}
-        for i in sorted(indexes):
-            cap.set(cv2.CAP_PROP_POS_FRAMES, i)
-            ret, frame = cap.read()
-            if not ret:
-                logger.warning(f'read {i} frame error.')
-                continue
-            frame = _get_box_frame(frame)
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            gray = cv2.erode(gray, np.ones((3, 3), np.uint8), iterations=1)
-            gray = cv2.dilate(gray, np.ones((3, 3), np.uint8), iterations=1)
-            real_feat = int(np.mean(gray))
-            feat = round(real_feat / 10) * 10
-            feats.append(feat)
-            if feat not in feat2idx:
-                feat2idx[feat] = {}
-            if real_feat not in feat2idx[feat]:
-                feat2idx[feat][real_feat] = []
-            feat2idx[feat][real_feat].append(i)
-        mode = stats.mode(feats)[0][0]
-        max_cnt, vid_idx = -1, -1
-        for value in feat2idx[mode].values():
-            n = len(value) 
-            if n > max_cnt:
-                max_cnt = n
-                vid_idx = value[0]
-        cap.set(cv2.CAP_PROP_POS_FRAMES, vid_idx)
-        _, frame = cap.read()
-        global_gray_frame = cv2.cvtColor(_get_box_frame(frame), cv2.COLOR_BGR2GRAY)
-        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-
     stdwave, diffimpulse, featpeak, direction = [], [], [], []
     keepframe, keepidxes, half_focus_width = [], [], -1
     if devmode:
         binframes, binpoints = [], []
     idx, frame_tmp = 0, np.zeros((h, w), dtype=np.uint8)
-    pre_frame_gray = None # np.zeros((h, w, 1), dtype=np.uint8)
+    pre_frame_gray, pre_check_gray = global_gray_frame, global_gray_check
     ret, frame_raw = cap.read()
     progress_step = int(cnt / 5)
     while ret:
         keep_flag = False
-        frame_bgr = _get_box_frame(frame_raw)
+        frame_bgr, check_bgr = _get_box_frame(frame_raw)
 
         if global_remove_shadow is not None and isinstance(global_remove_shadow, (tuple, list)):
             frame_bgr = _remove_shadow(frame_bgr, *global_remove_shadow)
 
         # frame_bgr = cv2.fastNlMeansDenoisingColored(frame_bgr,None, 10, 10, 7, 21)
         frame_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+        if check_box is not None:
+            check_gray = cv2.cvtColor(check_bgr, cv2.COLOR_BGR2GRAY)
+            if pre_check_gray is None:
+                pre_check_gray = check_gray
         if global_blur_type != "none":
             frame_gray = gray_image_blur(frame_gray, global_blur_type, global_filter_kernel)
+        if pre_frame_gray is None:
+            pre_frame_gray = frame_gray
 
         if args.rmstill_frame_enable:
             if rmstill_brightness_norm:
@@ -589,15 +596,9 @@ def video_preprocess(args, progress_cb=None):
             feat = _calc_feat(frame_tmp)
             feat = int(np.mean(feat))
             featpeak.append(feat)
-            pre_frame_gray = _find_bg(idx, frame_gray, feat, featpeak)
 
         elif args.direction_tracker_enable:
-            if global_gray_frame is not None:
-                frame_tmp = cv2.absdiff(frame_gray, global_gray_frame)
-            else:
-                if pre_frame_gray is None:
-                    pre_frame_gray = frame_gray
-                frame_tmp = cv2.absdiff(frame_gray, pre_frame_gray)
+            frame_tmp = cv2.absdiff(frame_gray, pre_frame_gray)
             if half_focus_width < 0:
                 if direction_agg_axis == 0:
                     half_focus_width = int(0.5 * frame_tmp.shape[1])
@@ -623,19 +624,10 @@ def video_preprocess(args, progress_cb=None):
                 writer.write(frame_raw)
 
         elif args.stdwave_tracker_enable:
-            # TODO use global
-            # if pre_frame_gray is None:
-            #     pre_frame_gray = frame_gray
-            # frame_tmp = cv2.absdiff(frame_gray, pre_frame_gray)
-            if global_gray_frame is not None:
-                frame_tmp = cv2.absdiff(frame_gray, global_gray_frame)
-            else:
-                if pre_frame_gray is None:
-                    pre_frame_gray = frame_gray
-                frame_tmp = cv2.absdiff(frame_gray, pre_frame_gray)
-            feat = _calc_feat(frame_tmp)
+            feat = _calc_feat(cv2.absdiff(frame_gray, pre_frame_gray))
+            if pre_check_gray is not None:
+                feat = max(0, feat - _calc_feat(cv2.absdiff(check_gray, pre_check_gray)))
             stdwave.append(feat)
-            # pre_frame_gray = _find_bg(idx, frame_gray, feat, stdwave)
 
             if debug_write_video: # debug
                 if len(stdwave) < 500:

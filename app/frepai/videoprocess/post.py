@@ -300,11 +300,11 @@ def _post_stdwave(pigeon, args, progress_cb):# {{{
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         logger.info(f'{video_path}:{int(cap.get(cv2.CAP_PROP_FRAME_COUNT))}')
 
-        stdwave_bg_window = pigeon['stdwave_bg_window']
+        global_bg_focus = pigeon['global_bg_focus']
+        # global_bg_check = pigeon['global_bg_check']
         stdwave_sigma_count = pigeon['stdwave_sigma_count']
         stdwave_window_size = pigeon['stdwave_window_size']
         stdwave_distance_size = pigeon['stdwave_distance_size']
-        stdwave_minstd_thresh = pigeon['stdwave_minstd_thresh']
         mean, std, dd = pigeon['stdwave_mean'], pigeon['stdwave_std'], pigeon['stdwave_dd']
 
         tmp_video_file = f'{cache_path}/_stdwave.mp4'
@@ -413,11 +413,10 @@ def _post_stdwave(pigeon, args, progress_cb):# {{{
                         fontscale,
                         (0, 0, 0), 2)
                 cv2.putText(img,
-                        "B: %d N:%.2f S:%.3f T:%.2f L:%.2f" % (
-                            stdwave_bg_window,
+                        "B: %d, N:%.2f S:%.3f T:%.2f" % (
+                            global_bg_focus,
                             stdwave_sigma_count,
-                            std, T,
-                            stdwave_minstd_thresh),
+                            std, T),
                         (INPUT_WIDTH + 12, height - int(th * 0.35)),
                         cv2.FONT_HERSHEY_SIMPLEX,
                         fontscale,

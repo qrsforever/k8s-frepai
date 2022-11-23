@@ -10,16 +10,16 @@
 {
     "focus_box": [0, 0, 1, 1],
     "black_box": [1, 1, 1, 1],
+    "check_box": [],
     "focus_box_repnum": 0,
     "angle": 0,
     "reg_factor": 1,
+    "global_bg_finding": false,
     "global_grap_interval": -1,
     "global_blur_type": "none",
     "global_filter_kernel": 3,
     "global_feature_select": "mean",
     "global_hdiff_rate": 0.3,
-    "global_bg_window": 150,
-    "global_bg_atonce": true,
 }
 ```
 
@@ -453,21 +453,15 @@
 
 
 ```
-
 {
-    "focus_box": [0.85, 0.24, 0.966, 0.558],
-    "black_box": [0,0,0,0],
-    "global_grap_interval": 1,
-    "global_blur_type": "none",
-    "global_filter_kernel": 3,
-    "global_feature_select": "mean",
+    "focus_box": [0.291,0.066,0.327,0.223],
     "global_hdiff_rate": 0.3,
-    "global_bg_window": 150,
-    "global_bg_atonce": true,
+    "stdwave_tracker_enable": true,
     "stdwave_sub_average": true,
-    "stdwave_sigma_count": 1.8,
-    "stdwave_window_size": 30,
-    "stdwave_distance_size": 150,
-    "stdwave_minstd_thresh":2.9
+    "stdwave_sigma_count": -2,
+    "stdwave_window_secs": 4,
+    "stdwave_distance_secs": 12,
+    "stdwave_minstd_thresh": 3.5
 }
-```
+
+```
