@@ -97,6 +97,8 @@ def get_counts(model, frames, strides, batch_size,
     if pcaks:
         Fprg = 0.5
 
+    print("within_period_threshold:", within_period_threshold)
+
     for i, stride in enumerate(strides):
         # num_batches = int(np.ceil(seq_len / model.num_frames / stride / batch_size))
         num_batches = int(np.floor(seq_len / model.num_frames / stride / batch_size))

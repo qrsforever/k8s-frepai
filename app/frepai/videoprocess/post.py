@@ -300,8 +300,9 @@ def _post_stdwave(pigeon, args, progress_cb):# {{{
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         logger.info(f'{video_path}:{int(cap.get(cv2.CAP_PROP_FRAME_COUNT))}')
 
-        global_bg_focus = pigeon['global_bg_focus']
-        # global_bg_check = pigeon['global_bg_check']
+        bg_focus_secs, bg_check_secs = pigeon['global_bg_focus'] / fps, pigeon['global_bg_check'] / fps
+        bg_focus_str = '%02d:%02d' % (int(bg_focus_secs / 60), bg_focus_secs % 60)
+        bg_check_str = '%02d:%02d' % (int(bg_check_secs / 60), bg_check_secs % 60)
         stdwave_sigma_count = pigeon['stdwave_sigma_count']
         stdwave_window_size = pigeon['stdwave_window_size']
         stdwave_distance_size = pigeon['stdwave_distance_size']
@@ -413,8 +414,9 @@ def _post_stdwave(pigeon, args, progress_cb):# {{{
                         fontscale,
                         (0, 0, 0), 2)
                 cv2.putText(img,
-                        "B: %d, N:%.2f S:%.3f T:%.2f" % (
-                            global_bg_focus,
+                        "%s %s N:%.2f S:%.3f T:%.2f" % (
+                            bg_focus_str,
+                            '%s' % bg_check_str if bg_check_secs > 0 else '',
                             stdwave_sigma_count,
                             std, T),
                         (INPUT_WIDTH + 12, height - int(th * 0.35)),
@@ -698,16 +700,20 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
             black_box = None
             focus_box = None
 
-        bottom_text = '%s %s' % (
+        bg_focus_secs = pigeon['global_bg_focus'] / fps
+        bg_focus_str = '%02d:%02d' % (int(bg_focus_secs / 60), bg_focus_secs % 60)
+
+        bottom_text = '%s %s %s' % (
+            bg_focus_str,
             'F:%.3f' % (float(valid_frames_count) / all_frames_count),
             'R:%.1f' % args.angle if args.angle else '',
         )
 
         if args['rmstill_frame_enable']:
-            bottom_text += ' %s %s %s %s' % (
-                'A:%.4f' % args['rmstill_rate_threshold'],
+            bottom_text += '%s %s %s %s' % (
+                'A:%.3f' % args['rmstill_rate_threshold'],
                 'B:%d' % args['rmstill_bin_threshold'],
-                'M:%.4f' % (float(1) / ((fy2 - fy1) * (fx2 - fx1))),
+                'M:%.3f' % (float(1) / ((fy2 - fy1) * (fx2 - fx1))),
                 'T:%.2f' % pigeon['within_period_threshold']
             )
         if args['color_tracker_enable']:

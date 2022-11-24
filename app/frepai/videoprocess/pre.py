@@ -286,7 +286,7 @@ def video_preprocess(args, progress_cb=None):
 
         def _mode_frame(feats, feat2idx):
             mode = stats.mode(feats)[0][0]
-            max_cnt, vid_idx = -1, -1
+            max_cnt, vid_idx = -1, 0 
             for value in feat2idx[mode].values():
                 n = len(value)
                 if n > max_cnt:
@@ -305,18 +305,18 @@ def video_preprocess(args, progress_cb=None):
             if check_box is not None:
                 _box_feat(frame_check, check_feats, check_feat2idx)
 
-        vid_idx = _mode_frame(focus_feats, focus_feat2idx)
-        cap.set(cv2.CAP_PROP_POS_FRAMES, vid_idx)
-        _, frame = cap.read()
-        global_gray_frame = cv2.cvtColor(_get_box_frame(frame)[0], cv2.COLOR_BGR2GRAY)
-        resdata['global_bg_focus'] = vid_idx
+        resdata['global_bg_focus'] = _mode_frame(focus_feats, focus_feat2idx)
         if check_box is not None:
-            vid_idx = _mode_frame(check_feats, check_feat2idx)
-            cap.set(cv2.CAP_PROP_POS_FRAMES, vid_idx)
-            _, frame = cap.read()
-            global_gray_check = cv2.cvtColor(_get_box_frame(frame)[1], cv2.COLOR_BGR2GRAY)
-            resdata['global_bg_check'] = vid_idx
-        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            resdata['global_bg_check'] = _mode_frame(check_feats, check_feat2idx)
+
+    cap.set(cv2.CAP_PROP_POS_FRAMES, resdata['global_bg_focus'])
+    _, frame = cap.read()
+    global_gray_frame = cv2.cvtColor(_get_box_frame(frame)[0], cv2.COLOR_BGR2GRAY)
+    if check_box is not None:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, resdata['global_bg_check'])
+        _, frame = cap.read()
+        global_gray_check = cv2.cvtColor(_get_box_frame(frame)[1], cv2.COLOR_BGR2GRAY)
+    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
     if global_grap_step > 0:
         resdata['global_grap_step'] = global_grap_step
@@ -464,8 +464,6 @@ def video_preprocess(args, progress_cb=None):
         diffimpulse_one_threshold = int(args.get('diffimpulse_rate_threshold', 0.02) * area)
         diffimpulse_bin_threshold = args.get('diffimpulse_bin_threshold', 20)
         diffimpulse_window_size = args.get('diffimpulse_window_size', [7, 5])
-        diffimpulse_blur_type = args.get('diffimpulse_blur_type', 'none')
-        diffimpulse_filter_kernel = args.get('diffimpulse_filter_kernel', 3)
         resdata['diffimpulse_one_threshold'] = diffimpulse_one_threshold
         resdata['diffimpulse_bin_threshold'] = diffimpulse_bin_threshold
         resdata['diffimpulse_window_size'] = diffimpulse_window_size
@@ -488,16 +486,12 @@ def video_preprocess(args, progress_cb=None):
         if global_remove_shadow is not None and isinstance(global_remove_shadow, (tuple, list)):
             frame_bgr = _remove_shadow(frame_bgr, *global_remove_shadow)
 
-        # frame_bgr = cv2.fastNlMeansDenoisingColored(frame_bgr,None, 10, 10, 7, 21)
         frame_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
         if check_box is not None:
             check_gray = cv2.cvtColor(check_bgr, cv2.COLOR_BGR2GRAY)
-            if pre_check_gray is None:
-                pre_check_gray = check_gray
+
         if global_blur_type != "none":
             frame_gray = gray_image_blur(frame_gray, global_blur_type, global_filter_kernel)
-        if pre_frame_gray is None:
-            pre_frame_gray = frame_gray
 
         if args.rmstill_frame_enable:
             if rmstill_brightness_norm:
@@ -505,8 +499,7 @@ def video_preprocess(args, progress_cb=None):
                 v = np.array((v - np.mean(v)) / np.std(v) * 32 + 127, dtype=np.uint8)
                 frame_bgr = cv2.cvtColor(cv2.merge([h, s, v]), cv2.COLOR_HSV2BGR)
             frame_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-            if pre_frame_gray is not None:
-                frame_tmp = cv2.absdiff(frame_gray, pre_frame_gray)
+            frame_tmp = cv2.absdiff(frame_gray, pre_frame_gray)
             frame_tmp = cv2.threshold(frame_tmp, rmstill_bin_threshold, 255, cv2.THRESH_BINARY)[1]
             if rmstill_noise_level > 0:
                 # Opening
@@ -538,7 +531,6 @@ def video_preprocess(args, progress_cb=None):
                 if wpoint_mean > rmstill_white_thres:
                     logger.info(f'wpoint_mean[{wpoint_mean}] vs rmstill_white_thres[{rmstill_white_thres}], {rmstill_white_window}')
                     frames_invalid = False
-            pre_frame_gray = frame_gray
 
         elif args.color_tracker_enable:
             frame_hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
@@ -590,8 +582,6 @@ def video_preprocess(args, progress_cb=None):
                     binframes.append(cv2.resize(frame_tmp, (INPUT_WIDTH, INPUT_HEIGHT)))
 
         elif args.featpeak_tracker_enbale:
-            if pre_frame_gray is None:
-                pre_frame_gray = frame_gray
             frame_tmp = cv2.absdiff(frame_gray, pre_frame_gray)
             feat = _calc_feat(frame_tmp)
             feat = int(np.mean(feat))
@@ -609,7 +599,6 @@ def video_preprocess(args, progress_cb=None):
             rfeat = _calc_feat(data[half_focus_width:])
             mfeat = abs(lfeat - rfeat)
             direction.append([mfeat if mfeat != 0 else 0.01, lfeat, rfeat])
-            pre_frame_gray = frame_gray
             if debug_write_video:
                 if global_remove_shadow is not None:
                     frame_raw[focus_y1:focus_y2, focus_x1:focus_x2, :] = frame_bgr
@@ -640,11 +629,7 @@ def video_preprocess(args, progress_cb=None):
                     resdata['upload_files'].append('pre-video.mp4')
 
         elif args.diffimpulse_tracker_enable:
-            frame_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-            frame_blur = gray_image_blur(frame_gray, diffimpulse_blur_type, diffimpulse_filter_kernel)
-            if pre_frame_gray is None:
-                pre_frame_gray = frame_blur
-            frame_tmp = cv2.absdiff(frame_blur, pre_frame_gray)
+            frame_tmp = cv2.absdiff(frame_gray, pre_frame_gray)
             cc = np.sum(frame_tmp > diffimpulse_bin_threshold)
             if devmode:
                 debug_data.append(cc)
@@ -652,7 +637,6 @@ def video_preprocess(args, progress_cb=None):
                 diffimpulse.append(1)
             else:
                 diffimpulse.append(0)
-            pre_frame_gray = frame_blur
 
         if keep_flag:
             if focus_box is not None:
@@ -671,6 +655,11 @@ def video_preprocess(args, progress_cb=None):
 
         if idx % progress_step == 0:
             _send_progress(100 * idx / cnt)
+
+        if not global_bg_finding:
+            pre_frame_gray = frame_gray
+        if check_box is not None:
+            pre_check_gray = check_gray
 
         idx += 1
         ret, frame_raw = cap.read()
