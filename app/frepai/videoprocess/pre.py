@@ -152,6 +152,7 @@ g_switch_names = [
 
 def video_preprocess(args, progress_cb=None):
     if 'dev_args' in args and len(args['dev_args']) > 0:
+        logger.info(args['dev_args'])
         args.update({key: False for key in g_switch_names})
         args.update(json.loads(args['dev_args']))
 
@@ -237,8 +238,6 @@ def video_preprocess(args, progress_cb=None):
             cbox = img[check_y1:check_y2, check_x1:check_x2, :]
         return vbox, cbox
 
-    logger.info(f'width[{width} vs {w}] height[{height} vs {h}] framerate[{fps}] count[{all_cnt}]')
-
     area, frames_invalid = w * h, False
     if w < 0 or h < 0 or area < MIN_AREA_THRESH:
         cap.release()
@@ -252,7 +251,11 @@ def video_preprocess(args, progress_cb=None):
 
     global_gray_frame, global_gray_check = None, None
     global_remove_shadow = args.get('global_remove_shadow', None)
-    global_grap_step = int(fps * args.get('global_grap_interval', -1))
+    grap_speed = args.get('global_grap_speed', -1)
+    if grap_speed > 0:
+        global_grap_step = grap_speed
+    else:
+        global_grap_step = int(fps * args.get('global_grap_interval', -1))
     global_blur_type = args.get('global_blur_type', 'none')
     global_filter_kernel = args.get('global_filter_kernel', 3)
     global_feature_select = args.get('global_feature_select', 'mean')
@@ -337,6 +340,8 @@ def video_preprocess(args, progress_cb=None):
         cnt = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     else:
         cnt = all_cnt
+
+    logger.info(f'width[{width} vs {w}] height[{height} vs {h}] framerate[{fps}] count[{all_cnt} vs {cnt}]')
 
     resdata['video_path'] = video_path
 
@@ -513,7 +518,7 @@ def video_preprocess(args, progress_cb=None):
                         frame_tmp = cv2.cvtColor(frame_tmp, cv2.COLOR_GRAY2RGB)
                         binframes.append(cv2.resize(frame_tmp, (INPUT_WIDTH, INPUT_HEIGHT)))
                         binpoints.append(np.round(val / rmstill_area_thres, 2))
-            else:
+            elif rmstill_area_mode == 1:
                 contours, _ = cv2.findContours(frame_tmp, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
                 if len(contours) > 0:
                     contours = sorted(contours, key=lambda x:cv2.contourArea(x), reverse=True)
@@ -703,8 +708,8 @@ def video_preprocess(args, progress_cb=None):
         np.save(f'{cache_path}/diffimpulse_data.npy', np.asarray(diffimpulse))
         resdata['upload_files'].append('diffimpulse_data.npy')
     else:
+        # repnet
         logger.info(f'valid frames count: [{len(keepframe)}] cache_path[{cache_path}]')
-
         if frames_invalid or len(keepframe) < 32:
             logger.warning(f'invalid[{frames_invalid}] or valid frames count: {len(keepframe)} <= 32')
             _send_progress(100, True)

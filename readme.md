@@ -16,6 +16,7 @@
     "reg_factor": 1,
     "global_bg_finding": false,
     "global_grap_interval": -1,
+    "global_grap_speed": -1,
     "global_blur_type": "none",
     "global_filter_kernel": 3,
     "global_feature_select": "mean",
