@@ -143,7 +143,7 @@ def _post_featpeak(pigeon, args, progress_cb):# {{{
         featpeak_data = np.hstack([featpeak_data, [featpeak_data[-1]] * (M - len(featpeak_data) % M)])
         if featpeak_data_normal:
             featpeak_post = np.hstack([featpeak_post, [featpeak_post[-1]] * (M - len(featpeak_post) % M)])
-        N = len(featpeak_post) 
+        N = len(featpeak_post)
         images = []
         for i in range(0, N, M):
             ys = featpeak_post[i:i + M]
@@ -520,7 +520,7 @@ def _post_diffimpulse(pigeon, args, progress_cb):# {{{
         fontscale = 0.7 if height < 500 else 2
 
         frames, sum_counts, frames_indexes = [], [], None
-        if image.shape[1] < all_frames_count: 
+        if image.shape[1] < all_frames_count:
             frames_indexes = np.sort(np.random.choice(all_frames_count, image.shape[1], replace=False))
         cap_index, cur_cnt = -1, 0
         while len(frames) < image.shape[1]:
@@ -686,6 +686,7 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
             tmp_sfile = os.path.join(cache_path, f'_{smp4_name}')
             stride_vid = cv2.VideoWriter(tmp_sfile, fmt, fps, (width, height))
 
+        area = 1
         if args.osd_sims:
             embs_sims = np.load(f'{cache_path}/embs_sims.npy')
             focus_box = get_rect_points(width, height, args.focus_box)
@@ -694,6 +695,7 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
                 bx1, by1, bx2, by2 = black_box
             if focus_box is not None:
                 fx1, fy1, fx2, fy2 = focus_box
+                area = (fy2 - fy1) * (fx2 - fx1)
             pigeon['upload_files'].append('embs_feat.npy')
             pigeon['embs_feat'] = f'{coss3_domain}{coss3_path}/embs_feat.npy'
         else:
@@ -701,7 +703,10 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
             focus_box = None
 
         bg_focus_secs = pigeon['global_bg_focus'] / fps
-        bg_focus_str = '%02d:%02d' % (int(bg_focus_secs / 60), bg_focus_secs % 60)
+        if bg_focus_secs > 0:
+            bg_focus_str = '%02d:%02d' % (int(bg_focus_secs / 60), bg_focus_secs % 60)
+        else:
+            bg_focus_str = ''
 
         bottom_text = '%s %s %s' % (
             bg_focus_str,
@@ -711,9 +716,9 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
 
         if args['rmstill_frame_enable']:
             bottom_text += '%s %s %s %s' % (
-                'A:%.3f' % args['rmstill_rate_threshold'],
+                'A:%.4f' % args['rmstill_rate_threshold'],
                 'B:%d' % args['rmstill_bin_threshold'],
-                'M:%.3f' % (float(1) / ((fy2 - fy1) * (fx2 - fx1))),
+                'M:%.4f' % (float(1) / area),
                 'T:%.2f' % pigeon['within_period_threshold']
             )
         if args['color_tracker_enable']:
@@ -735,7 +740,13 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
         if os.path.exists(f'{cache_path}/binpoints.npy'):
             binpoints = np.load(f'{cache_path}/binpoints.npy')
         if len(binpoints) > 0:
-            hist_blend = draw_hist_density(binpoints, 20, INPUT_WIDTH, INPUT_HEIGHT)
+            rmstill_area_thres = pigeon['rmstill_area_thres']
+            hist_blend = draw_hist_density(np.round(binpoints / rmstill_area_thres, 2), 20, INPUT_WIDTH, INPUT_HEIGHT)
+            cv2.putText(hist_blend,
+                    '%d' % rmstill_area_thres,
+                    (int(0.4 * INPUT_WIDTH), int(0.5 * INPUT_HEIGHT)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                    (0, 0, 0), 1)
 
         chosen_stride = engine['chosen_stride']
         feat_factors = engine['feat_factors']
@@ -820,6 +831,16 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
                             hist_blend, alpha,
                             binframes[valid_idx], 1 - alpha,
                             0)
+                    cv2.putText(frame_bgr,
+                            '%d' % binpoints[valid_idx],
+                            (int(0.1 * INPUT_WIDTH), th + int(0.2 * INPUT_HEIGHT)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                            (0, 0, 0), 1)
+                    cv2.putText(frame_bgr,
+                            '%.5f' % (binpoints[valid_idx] / area),
+                            (int(0.1 * INPUT_WIDTH), th + int(0.8 * INPUT_HEIGHT)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                            (0, 0, 0), 1)
 
             cv2.putText(frame_bgr, bottom_text,
                     (INPUT_WIDTH + 12, height - int(th * 0.35)),

@@ -396,6 +396,8 @@ def video_preprocess(args, progress_cb=None):
 
     if args.rmstill_frame_enable:
         area_rate_thres = args.get('rmstill_rate_threshold', 0.001)
+        if area_rate_thres < 0:
+            area_rate_thres = float(1) / (w * h)
         rmstill_bin_threshold = args.get('rmstill_bin_threshold', 20)
         rmstill_brightness_norm = args.get('rmstill_brightness_norm', False)
         rmstill_area_mode = args.get('rmstill_area_mode', 0)
@@ -409,6 +411,7 @@ def video_preprocess(args, progress_cb=None):
             rmstill_white_buffer = np.zeros((rmstill_white_window, ))
             frames_invalid = True
         resdata['within_period_threshold'] = args.get('within_period_threshold', 0.5)
+        resdata['rmstill_area_thres'] = rmstill_area_thres
 
         logger.info(f'rmstill: ({area}, {rmstill_area_thres}, {rmstill_bin_threshold}, {rmstill_noise_level})')
 
@@ -517,7 +520,7 @@ def video_preprocess(args, progress_cb=None):
                     if devmode:
                         frame_tmp = cv2.cvtColor(frame_tmp, cv2.COLOR_GRAY2RGB)
                         binframes.append(cv2.resize(frame_tmp, (INPUT_WIDTH, INPUT_HEIGHT)))
-                        binpoints.append(np.round(val / rmstill_area_thres, 2))
+                        binpoints.append(val)
             elif rmstill_area_mode == 1:
                 contours, _ = cv2.findContours(frame_tmp, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
                 if len(contours) > 0:
