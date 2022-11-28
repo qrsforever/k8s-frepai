@@ -45,12 +45,30 @@
 }
 ```
 
+### color tracker
+
+`color_select`: 0 - 9 (红,橙,.... 黑,白,灰）
+`color_track_direction`: (0, 1, 2)
+
+```json
+{
+    "color_tracker_enable": true,
+    "strides": [1, 2],
+    "within_period_threshold": 0.5,
+    "color_select": 8,
+    "color_rate_threshold": 0.9,
+    "color_buffer_size": 12,
+    "color_lower_rate": 0.2,
+    "color_upper_rate": 0.8,
+    "color_track_direction": 0,
+}
+```
+
 ### featpeak
 
 ```json
 {
     "rmstill_frame_enable": false,
-    "color_tracker_enable": false,
     "diffimpulse_tracker_enable": false,
     "featpeak_tracker_enbale": true,
     "stdwave_tracker_enable": false,

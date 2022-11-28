@@ -410,8 +410,8 @@ def video_preprocess(args, progress_cb=None):
             rmstill_white_window = args.get('rmstill_white_window', 10)
             rmstill_white_buffer = np.zeros((rmstill_white_window, ))
             frames_invalid = True
-        resdata['within_period_threshold'] = args.get('within_period_threshold', 0.5)
         resdata['rmstill_area_thres'] = rmstill_area_thres
+        resdata['within_period_threshold'] = args.get('within_period_threshold', 0.5)
 
         logger.info(f'rmstill: ({area}, {rmstill_area_thres}, {rmstill_bin_threshold}, {rmstill_noise_level})')
 
@@ -430,6 +430,9 @@ def video_preprocess(args, progress_cb=None):
         color_lower_value = int(color_buffer_size * color_lower_rate)
         color_upper_value = int(color_buffer_size * color_upper_rate)
         logger.info(f'color_tracker: ({color_area_thres}, {color_lower_value}, {color_upper_value})')
+        resdata['within_period_threshold'] = args.get('within_period_threshold', 0.5)
+        resdata['color_lower_value'] = color_lower_value 
+        resdata['color_upper_value'] = color_upper_value 
 
     elif args.featpeak_tracker_enbale:
         _height = args.get('featpeak_height_minmax', (-1, -1))
@@ -482,7 +485,7 @@ def video_preprocess(args, progress_cb=None):
     stdwave, diffimpulse, featpeak, direction = [], [], [], []
     keepframe, keepidxes, half_focus_width = [], [], -1
     if devmode:
-        binframes, binpoints = [], []
+        binframes, binpoints, colorvals = [], [], []
     idx, frame_tmp = 0, np.zeros((h, w), dtype=np.uint8)
     pre_frame_gray, pre_check_gray = global_gray_frame, global_gray_check
     ret, frame_raw = cap.read()
@@ -542,6 +545,7 @@ def video_preprocess(args, progress_cb=None):
 
         elif args.color_tracker_enable:
             frame_hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
+            frame_hsv = cv2.blur(frame_hsv, (20, 20))
             if color_select == 0:
                 mask_red_1 = cv2.inRange(frame_hsv, lower_red_1, upper_red_1)
                 mask_red_2 = cv2.inRange(frame_hsv, lower_red_2, upper_red_2)
@@ -564,8 +568,10 @@ def video_preprocess(args, progress_cb=None):
                 color_mask = cv2.inRange(frame_hsv, lower_white, upper_white)
             elif color_select == 9:
                 color_mask = cv2.inRange(frame_hsv, lower_gray, upper_gray)
-            val = np.sum(color_mask == 255)
-            if val > color_area_thres:
+            color_mask = cv2.erode(color_mask, None, iterations=2)
+            color_mask = cv2.dilate(color_mask, None, iterations=2)
+            colorval = np.sum(color_mask == 255)
+            if colorval > color_area_thres:
                 color_buffer[-1] = 1
             else:
                 color_buffer[-1] = 0
@@ -586,6 +592,7 @@ def video_preprocess(args, progress_cb=None):
             if color_lower_value < val < color_upper_value:
                 keep_flag = True
                 if devmode:
+                    colorvals.append([colorval , val])
                     frame_tmp = cv2.cvtColor(color_mask, cv2.COLOR_GRAY2RGB)
                     binframes.append(cv2.resize(frame_tmp, (INPUT_WIDTH, INPUT_HEIGHT)))
 
@@ -728,6 +735,8 @@ def video_preprocess(args, progress_cb=None):
             np.save(f'{cache_path}/binpoints.npy', np.asarray(binpoints))
         if len(binframes) > 0:
             np.savez_compressed(f'{cache_path}/binframes.npz', x=np.asarray(binframes))
+        if len(colorvals) > 0:
+            np.save(f'{cache_path}/colorvals.npy', np.asarray(colorvals))
 
     with open(f'{cache_path}/config.json', 'w') as f:
         f.write(json.dumps(dict(args)))

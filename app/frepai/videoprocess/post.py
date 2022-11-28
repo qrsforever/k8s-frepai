@@ -734,9 +734,12 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
         osd, osd_size, alpha = 0, int(width * 0.25), 0.5
         osd_blend, hist_blend = None, None
         keepframe = np.load(f'{cache_path}/keepframe.npz')['x']
-        binframes, binpoints = [], []
+        binframes, binpoints, colorvals = [], [], []
         if os.path.exists(f'{cache_path}/binframes.npz'):
             binframes = np.load(f'{cache_path}/binframes.npz')['x']
+        if os.path.exists(f'{cache_path}/colorvals.npy'):
+            color_lower, color_upper = pigeon['color_lower_value'], pigeon['color_upper_value']
+            colorvals = np.load(f'{cache_path}/colorvals.npy')
         if os.path.exists(f'{cache_path}/binpoints.npy'):
             binpoints = np.load(f'{cache_path}/binpoints.npy')
         if len(binpoints) > 0:
@@ -744,7 +747,7 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
             hist_blend = draw_hist_density(np.round(binpoints / rmstill_area_thres, 2), 20, INPUT_WIDTH, INPUT_HEIGHT)
             cv2.putText(hist_blend,
                     '%d' % rmstill_area_thres,
-                    (int(0.4 * INPUT_WIDTH), int(0.5 * INPUT_HEIGHT)),
+                    (int(0.3 * INPUT_WIDTH), int(0.5 * INPUT_HEIGHT)),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6,
                     (0, 0, 0), 1)
 
@@ -826,6 +829,17 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
                 frame_bgr[height - INPUT_HEIGHT - 5:height - 5, 5:INPUT_WIDTH + 5, :] = keepframe[valid_idx][:,:,::-1]
                 if hist_blend is None:
                     frame_bgr[th:INPUT_HEIGHT + th, 5:INPUT_WIDTH + 5, :] = binframes[valid_idx]
+                    if len(colorvals) > 0:
+                        cv2.putText(frame_bgr,
+                                '%.2f' % round(colorvals[valid_idx][0] / area, 2),
+                                (8, th + int(0.4 * INPUT_HEIGHT)),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.8,
+                                (255, 0, 0), 2)
+                        cv2.putText(frame_bgr,
+                                '%02d %02d %02d' % (color_lower, colorvals[valid_idx][1], color_upper),
+                                (8, th + int(0.8 * INPUT_HEIGHT)),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7,
+                                (255, 0, 0), 2)
                 else:
                     frame_bgr[th:INPUT_HEIGHT + th, 5:INPUT_WIDTH + 5, :] = cv2.addWeighted(
                             hist_blend, alpha,
