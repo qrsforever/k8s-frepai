@@ -418,6 +418,15 @@ def video_preprocess(args, progress_cb=None):
     elif args.color_tracker_enable:
         color_pre_count = 0
         color_select = args.get('color_select', 8)
+        color_enhance_blur = args.get('color_enhance_blur', 0)
+        color_enhance_dilate = args.get('color_enhance_dilate', None)
+        if color_enhance_dilate is not None:
+            kernel, iterc = color_enhance_dilate
+            color_enhance_dilate = (np.ones((kernel, kernel), np.uint8), iterc)
+        color_enhance_erode = args.get('color_enhance_erode', None)
+        if color_enhance_erode is not None:
+            kernel, iterc = color_enhance_erode
+            color_enhance_erode = (np.ones((kernel, kernel), np.uint8), iterc)
         color_rate_threshold = args.get('color_rate_threshold', 0.9)
         color_buffer_size = args.get('color_buffer_size', 12)
         color_lower_rate = args.get('color_lower_rate', 0.2)
@@ -545,7 +554,8 @@ def video_preprocess(args, progress_cb=None):
 
         elif args.color_tracker_enable:
             frame_hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
-            frame_hsv = cv2.blur(frame_hsv, (20, 20))
+            if color_enhance_blur > 0:
+                frame_hsv = cv2.medianBlur(frame_hsv, color_enhance_blur)
             if color_select == 0:
                 mask_red_1 = cv2.inRange(frame_hsv, lower_red_1, upper_red_1)
                 mask_red_2 = cv2.inRange(frame_hsv, lower_red_2, upper_red_2)
@@ -568,8 +578,10 @@ def video_preprocess(args, progress_cb=None):
                 color_mask = cv2.inRange(frame_hsv, lower_white, upper_white)
             elif color_select == 9:
                 color_mask = cv2.inRange(frame_hsv, lower_gray, upper_gray)
-            color_mask = cv2.erode(color_mask, None, iterations=2)
-            color_mask = cv2.dilate(color_mask, None, iterations=2)
+            if color_enhance_dilate is not None:
+                color_mask = cv2.dilate(color_mask, color_enhance_dilate[0], iterations=color_enhance_dilate[1])
+            if color_enhance_erode is not None:
+                color_mask = cv2.erode(color_mask, color_enhance_erode[0], iterations=color_enhance_erode[1])
             colorval = np.sum(color_mask == 255)
             if colorval > color_area_thres:
                 color_buffer[-1] = 1

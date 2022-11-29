@@ -831,13 +831,15 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
                     frame_bgr[th:INPUT_HEIGHT + th, 5:INPUT_WIDTH + 5, :] = binframes[valid_idx]
                     if len(colorvals) > 0:
                         cv2.putText(frame_bgr,
-                                '%.2f' % round(colorvals[valid_idx][0] / area, 2),
-                                (8, th + int(0.4 * INPUT_HEIGHT)),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.8,
+                                '%.2f %.2f' % (
+                                    round(colorvals[valid_idx][0] / area, 2),
+                                    round(colorvals[valid_idx][1] / args['color_buffer_size'], 2)),
+                                (6, th + int(0.4 * INPUT_HEIGHT)),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7,
                                 (255, 0, 0), 2)
                         cv2.putText(frame_bgr,
                                 '%02d %02d %02d' % (color_lower, colorvals[valid_idx][1], color_upper),
-                                (8, th + int(0.8 * INPUT_HEIGHT)),
+                                (6, th + int(0.8 * INPUT_HEIGHT)),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.7,
                                 (255, 0, 0), 2)
                 else:
@@ -848,13 +850,13 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
                     cv2.putText(frame_bgr,
                             '%d' % binpoints[valid_idx],
                             (int(0.1 * INPUT_WIDTH), th + int(0.2 * INPUT_HEIGHT)),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-                            (0, 0, 0), 1)
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7,
+                            (255, 0, 0), 2)
                     cv2.putText(frame_bgr,
                             '%.5f' % (binpoints[valid_idx] / area),
                             (int(0.1 * INPUT_WIDTH), th + int(0.8 * INPUT_HEIGHT)),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-                            (0, 0, 0), 1)
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7,
+                            (255, 0, 0), 2)
 
             cv2.putText(frame_bgr, bottom_text,
                     (INPUT_WIDTH + 12, height - int(th * 0.35)),
