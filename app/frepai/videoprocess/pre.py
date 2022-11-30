@@ -16,6 +16,7 @@ import os
 import json
 import pickle
 import tempfile
+import functools
 
 from sklearn.decomposition import PCA
 from sklearn import preprocessing
@@ -250,6 +251,7 @@ def video_preprocess(args, progress_cb=None):
         writer = cv2.VideoWriter(f'{cache_path}/_pre_video.mp4', cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
 
     global_gray_frame, global_gray_check = None, None
+    global_enhance_funcs = []
     global_remove_shadow = args.get('global_remove_shadow', None)
     grap_speed = args.get('global_grap_speed', -1)
     if grap_speed > 0:
@@ -263,6 +265,15 @@ def video_preprocess(args, progress_cb=None):
     global_feature_minnum = args.get('global_feature_minnum', 50)
     global_hdiff_rate = args.get('global_hdiff_rate', 1.0)
     global_bg_finding = args.get('global_bg_finding', False)
+    global_mask_enhance = args.get('global_mask_enhance', None)
+    if global_mask_enhance is not None and isinstance(global_mask_enhance, dict):
+        for key, params in global_mask_enhance.items():
+            if key == 'dilate':
+                kernel = np.ones((params[0], params[0]), np.uint8)
+                global_enhance_funcs.append(functools.partial(cv2.dilate, kernel=kernel, iterations=params[1]))
+            elif key == 'erode':
+                kernel = np.ones((params[0], params[0]), np.uint8)
+                global_enhance_funcs.append(functools.partial(cv2.erode, kernel=kernel, iterations=params[1]))
 
     # find bg
     resdata['global_bg_focus'] = 0
@@ -494,7 +505,7 @@ def video_preprocess(args, progress_cb=None):
     stdwave, diffimpulse, featpeak, direction = [], [], [], []
     keepframe, keepidxes, half_focus_width = [], [], -1
     if devmode:
-        binframes, binpoints, colorvals = [], [], []
+        binframes, binpoints, contareas, colorvals = [], [], [], []
     idx, frame_tmp = 0, np.zeros((h, w), dtype=np.uint8)
     pre_frame_gray, pre_check_gray = global_gray_frame, global_gray_check
     ret, frame_raw = cap.read()
@@ -521,6 +532,9 @@ def video_preprocess(args, progress_cb=None):
             frame_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
             frame_tmp = cv2.absdiff(frame_gray, pre_frame_gray)
             frame_tmp = cv2.threshold(frame_tmp, rmstill_bin_threshold, 255, cv2.THRESH_BINARY)[1]
+            for func in global_enhance_funcs:
+                frame_tmp = func(frame_tmp)
+            # TODO will be remove
             if rmstill_noise_level > 0:
                 # Opening
                 frame_tmp = cv2.erode(frame_tmp, rmstill_noise_kernel, iterations=rmstill_noise_level)
@@ -537,12 +551,14 @@ def video_preprocess(args, progress_cb=None):
                 contours, _ = cv2.findContours(frame_tmp, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
                 if len(contours) > 0:
                     contours = sorted(contours, key=lambda x:cv2.contourArea(x), reverse=True)
-                    if cv2.contourArea(contours[0]) > rmstill_area_thres:
+                    area = cv2.contourArea(contours[0])
+                    if area > rmstill_area_thres:
                         keep_flag = True
                         if devmode:
                             frame_tmp = cv2.cvtColor(frame_tmp, cv2.COLOR_GRAY2RGB)
                             cv2.drawContours(frame_tmp, [contours[0]], 0, (0, 0, 255), 3)
                             binframes.append(cv2.resize(frame_tmp, (INPUT_WIDTH, INPUT_HEIGHT)))
+                            contareas.append(area)
 
             if frames_invalid and keep_flag:
                 rmstill_white_buffer[-1] = val
@@ -578,10 +594,12 @@ def video_preprocess(args, progress_cb=None):
                 color_mask = cv2.inRange(frame_hsv, lower_white, upper_white)
             elif color_select == 9:
                 color_mask = cv2.inRange(frame_hsv, lower_gray, upper_gray)
-            if color_enhance_dilate is not None:
-                color_mask = cv2.dilate(color_mask, color_enhance_dilate[0], iterations=color_enhance_dilate[1])
-            if color_enhance_erode is not None:
-                color_mask = cv2.erode(color_mask, color_enhance_erode[0], iterations=color_enhance_erode[1])
+            for func in global_enhance_funcs:
+                color_mask = func(color_mask)
+            # if color_enhance_dilate is not None:
+            #     color_mask = cv2.dilate(color_mask, color_enhance_dilate[0], iterations=color_enhance_dilate[1])
+            # if color_enhance_erode is not None:
+            #     color_mask = cv2.erode(color_mask, color_enhance_erode[0], iterations=color_enhance_erode[1])
             colorval = np.sum(color_mask == 255)
             if colorval > color_area_thres:
                 color_buffer[-1] = 1
@@ -747,6 +765,8 @@ def video_preprocess(args, progress_cb=None):
             np.save(f'{cache_path}/binpoints.npy', np.asarray(binpoints))
         if len(binframes) > 0:
             np.savez_compressed(f'{cache_path}/binframes.npz', x=np.asarray(binframes))
+        if len(contareas) > 0:
+            np.save(f'{cache_path}/contareas.npy', np.asarray(contareas))
         if len(colorvals) > 0:
             np.save(f'{cache_path}/colorvals.npy', np.asarray(colorvals))
 

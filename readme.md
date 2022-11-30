@@ -21,6 +21,7 @@
     "global_filter_kernel": 3,
     "global_feature_select": "mean",
     "global_hdiff_rate": 0.3,
+    "global_mask_enhance": { "dilate": [3, 1], "erode": [3, 1] },
 }
 ```
 

@@ -734,12 +734,14 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
         osd, osd_size, alpha = 0, int(width * 0.25), 0.5
         osd_blend, hist_blend = None, None
         keepframe = np.load(f'{cache_path}/keepframe.npz')['x']
-        binframes, binpoints, colorvals = [], [], []
+        binframes, binpoints, contareas, colorvals = [], [], [], []
         if os.path.exists(f'{cache_path}/binframes.npz'):
             binframes = np.load(f'{cache_path}/binframes.npz')['x']
         if os.path.exists(f'{cache_path}/colorvals.npy'):
             color_lower, color_upper = pigeon['color_lower_value'], pigeon['color_upper_value']
             colorvals = np.load(f'{cache_path}/colorvals.npy')
+        if os.path.exists(f'{cache_path}/contareas.npy'):
+            contareas = np.load(f'{cache_path}/contareas.npy')
         if os.path.exists(f'{cache_path}/binpoints.npy'):
             binpoints = np.load(f'{cache_path}/binpoints.npy')
         if len(binpoints) > 0:
@@ -747,12 +749,13 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
             hist_blend = draw_hist_density(np.round(binpoints / rmstill_area_thres, 2), 20, INPUT_WIDTH, INPUT_HEIGHT)
             cv2.putText(hist_blend,
                     '%d' % rmstill_area_thres,
-                    (int(0.3 * INPUT_WIDTH), int(0.5 * INPUT_HEIGHT)),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-                    (0, 0, 0), 1)
+                    (int(0.1 * INPUT_WIDTH), int(0.5 * INPUT_HEIGHT)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7,
+                    (0, 0, 0), 2)
 
         chosen_stride = engine['chosen_stride']
         feat_factors = engine['feat_factors']
+        grap_speed = args.get('global_grap_speed', -1)
 
         while True:
             success, frame_bgr = cap.read()
@@ -771,7 +774,7 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
                         '%d,%d' % (bx2, by2),
                         (bx2 - 65, by2 - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (210, 210, 210), 1)
-            cv2.rectangle(frame_bgr, (0, 0), (int(0.7 * width), th), (0, 0, 0), -1)
+            cv2.rectangle(frame_bgr, (0, 0), (int(0.8 * width), th), (0, 0, 0), -1)
             cv2.rectangle(frame_bgr, (0, height - th), (width, height), (0, 0, 0), -1)
             try:
                 if args.osd_sims and not is_still_frames[idx] \
@@ -803,9 +806,10 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
             except Exception:
                 logger.error(traceback.format_exc(limit=6))
             cv2.putText(frame_bgr,
-                    '%dX%d %.1f S:%d C:%.1f/%.1f %s %s %s' % (width, height,
+                    '%d %.1f S:%d C:%.1f/%.1f %s %s %s %s' % (width,
                         fps, chosen_stride, sum_counts[idx], sum_counts[-1],
                         'L:%.2f' % args.tsm_last_threshold if args.tsm_last_enable else '',
+                        'V:%d' % grap_speed if grap_speed > 0 else '', 
                         'P:%.2f' % within_period[idx],
                         'ST' if is_still_frames[idx] else ''),
                     (2, int(0.06 * height)),
@@ -829,6 +833,12 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
                 frame_bgr[height - INPUT_HEIGHT - 5:height - 5, 5:INPUT_WIDTH + 5, :] = keepframe[valid_idx][:,:,::-1]
                 if hist_blend is None:
                     frame_bgr[th:INPUT_HEIGHT + th, 5:INPUT_WIDTH + 5, :] = binframes[valid_idx]
+                    if len(contareas) > 0:
+                        cv2.putText(frame_bgr,
+                                '%.2f' % round(contareas[valid_idx] / area, 2),
+                                (15, th + int(0.4 * INPUT_HEIGHT)),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7,
+                                (255, 0, 0), 2)
                     if len(colorvals) > 0:
                         cv2.putText(frame_bgr,
                                 '%.2f %.2f' % (
