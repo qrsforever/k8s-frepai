@@ -718,7 +718,7 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
             bottom_text += '%s %s %s %s' % (
                 'A:%.4f' % args['rmstill_rate_threshold'],
                 'B:%d' % args['rmstill_bin_threshold'],
-                'M:%.4f' % (float(1) / area),
+                'G:%.3f' % engine['pred_score'],
                 'T:%.2f' % pigeon['within_period_threshold']
             )
         if args['color_tracker_enable']:
@@ -754,6 +754,7 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
                     (0, 0, 0), 2)
 
         chosen_stride = engine['chosen_stride']
+        avg_embs_score = engine['avg_embs_score']
         feat_factors = engine['feat_factors']
         grap_speed = args.get('global_grap_speed', -1)
 
@@ -795,10 +796,10 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
                                 0.6,
                                 (255, 0, 0), 1)
                     cv2.putText(osd_blend,
-                            '%d' % osd,
-                            (int(0.4 * osd_size), int(0.55 * osd_size)),
+                            '%d %.3f' % (osd, avg_embs_score[osd]),
+                            (int(0.1 * osd_size), int(0.55 * osd_size)),
                             cv2.FONT_HERSHEY_SIMPLEX,
-                            1,
+                            0.8,
                             (255, 0, 0), 2)
                     osd += 1
                 if osd_blend is not None:

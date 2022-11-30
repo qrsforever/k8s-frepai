@@ -79,6 +79,7 @@ def unnorm(query_frame):
 
 def get_counts(model, frames, strides, batch_size,
                within_period_threshold=0.5,
+               avg_pred_score=0.2,
                tsm_last_thresh=0.5,
                tsm_last_smooth=False,
                constant_speed=False,
@@ -188,7 +189,22 @@ def get_counts(model, frames, strides, batch_size,
     final_embs = embs_list[argmax_strides]
 
     # QRS
+    avg_embs_score = []
     within_period_scores = within_period_scores_list[argmax_strides]
+    for i in range(0, len(within_period_scores) - model.num_frames, model.num_frames):
+        embs_scores = within_period_scores[i:i + model.num_frames]
+        mscore = np.mean(embs_scores)
+        if mscore < avg_pred_score:
+            within_period_scores[i:i + model.num_frames] = (1 + mscore - avg_pred_score) * embs_scores 
+        avg_embs_score.append(mscore)
+    else:
+        j = model.num_frames if tsm_last_smooth else int(seq_len / chosen_stride) % model.num_frames
+        embs_scores = within_period_scores[i:i + j]
+        mscore = np.mean(embs_scores)
+        if mscore < avg_pred_score:
+            within_period_scores[i:i + j] = (1 + mscore - avg_pred_score) * embs_scores 
+        avg_embs_score.append(mscore)
+
     feat_factors = []
     if pcaks:
         start_time = time.time()
@@ -277,11 +293,11 @@ def get_counts(model, frames, strides, batch_size,
         chosen_frames = tf.gather(frames, idxes)
         feature_maps = model.base_model.predict(chosen_frames)
     else:
-        feature_maps = [] 
+        feature_maps = []
 
     del frames, scores, within_period_scores_list, embs_list
 
-    if pred_score < 0.2:
+    if pred_score < avg_pred_score:
         print('No repetitions detected in video as score '
               '%0.2f is less than threshold %0.2f.' % (pred_score, 0.2))
         per_frame_counts = np.asarray(len(per_frame_counts) * [0.])
@@ -293,6 +309,7 @@ def get_counts(model, frames, strides, batch_size,
         'within_period': np.round(within_period.astype(float), 3),
         'per_frame_counts': np.round(per_frame_counts.astype(float), 3),
         'final_embs': final_embs,
+        'avg_embs_score': avg_embs_score,
         'feature_maps': feature_maps,
         'feat_factors':feat_factors
     }

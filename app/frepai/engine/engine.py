@@ -476,7 +476,8 @@ def engine_process(pigeon, progress_cb=None):# {{{
     if args.tsm_last_enable:
         tsm_last_thresh = args.tsm_last_threshold
         tsm_last_smooth = args.tsm_last_smooth
-    within_period_threshold = pigeon['within_period_threshold']
+    within_period_threshold = pigeon.get('within_period_threshold', 0.5)
+    avg_pred_score = pigeon.get('avg_pred_score', 0.2)
 
     pcaks = None
     if args.ef_is_send:
@@ -493,6 +494,7 @@ def engine_process(pigeon, progress_cb=None):# {{{
     t0 = time.time()
     result = get_counts(model, frames,
             within_period_threshold=within_period_threshold,
+            avg_pred_score=avg_pred_score,
             strides=args.strides, batch_size=args.batch_size,
             tsm_last_thresh=tsm_last_thresh,
             tsm_last_smooth=tsm_last_smooth,

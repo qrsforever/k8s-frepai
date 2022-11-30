@@ -39,6 +39,7 @@
     "rmstill_white_rate": 0.1,
     "rmstill_white_window": 10,
     "strides": [1, 2],
+    "avg_pred_score": 0.2,
     "within_period_threshold": 0.5,
     "tsm_last_enable": false,
     "tsm_last_threshold": 0.5,
@@ -55,6 +56,7 @@
 {
     "color_tracker_enable": true,
     "strides": [1, 2],
+    "avg_pred_score": 0.2,
     "within_period_threshold": 0.5,
     "color_select": 8,
     "color_rate_threshold": 0.9,

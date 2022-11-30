@@ -422,6 +422,7 @@ def video_preprocess(args, progress_cb=None):
             rmstill_white_buffer = np.zeros((rmstill_white_window, ))
             frames_invalid = True
         resdata['rmstill_area_thres'] = rmstill_area_thres
+        resdata['avg_pred_score'] = args.get('avg_pred_score', 0.2) 
         resdata['within_period_threshold'] = args.get('within_period_threshold', 0.5)
 
         logger.info(f'rmstill: ({area}, {rmstill_area_thres}, {rmstill_bin_threshold}, {rmstill_noise_level})')
@@ -450,6 +451,7 @@ def video_preprocess(args, progress_cb=None):
         color_lower_value = int(color_buffer_size * color_lower_rate)
         color_upper_value = int(color_buffer_size * color_upper_rate)
         logger.info(f'color_tracker: ({color_area_thres}, {color_lower_value}, {color_upper_value})')
+        resdata['avg_pred_score'] = args.get('avg_pred_score', 0.2) 
         resdata['within_period_threshold'] = args.get('within_period_threshold', 0.5)
         resdata['color_lower_value'] = color_lower_value 
         resdata['color_upper_value'] = color_upper_value 
