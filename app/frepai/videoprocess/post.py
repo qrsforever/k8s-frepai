@@ -19,7 +19,9 @@ import matplotlib.pyplot as plt
 from frepai.utils.easydict import DotDict
 from frepai.utils.logger import EasyLogger as logger
 from frepai.utils.errcodes import HandlerError
-from frepai.utils.draw import get_rect_points, draw_osd_sim, draw_hist_density
+from frepai.utils.draw import (
+        get_rect_points, get_ploy_points,
+        draw_osd_sim, draw_hist_density)
 from frepai.utils.oss import coss3_put, coss3_domain
 from frepai.utils import rmdir_p
 
@@ -342,12 +344,28 @@ def _post_stdwave(pigeon, args, progress_cb):# {{{
 
         progress_cb(65)
 
-        focus_box = get_rect_points(width, height, args.focus_box)
+        focus_pts = args.get('focus_pts', None)
+        if focus_pts is not None:
+            pts = get_ploy_points(width, height, focus_pts)
+            focus_pts_mask = cv2.fillPoly(np.zeros((height, width, 3), dtype=np.uint8), [pts], (255, 255, 255))
+            focus_box = *np.min(pts, axis=0), *np.max(pts, axis=0)
+        else:
+            focus_box = get_rect_points(width, height, args.focus_box)
+
         black_box = get_rect_points(width, height, args.black_box)
         if black_box is not None:
             bx1, by1, bx2, by2 = black_box
         if focus_box is not None:
             fx1, fy1, fx2, fy2 = focus_box
+
+        def _get_box_frame(img):
+            if focus_pts is not None:
+                img = cv2.bitwise_and(img, focus_pts_mask)
+            if black_box is not None:
+                img[by1:by2, bx1:bx2, :] = 0
+            if focus_box is not None:
+                img = img[fy1:fy2, fx1:fx2, :]
+            return img
 
         image = cv2.resize(image, (int(height * imgw / imgh), height), interpolation=cv2.INTER_LINEAR)
         window = width # int(0.3 * image.shape[1])
@@ -368,10 +386,7 @@ def _post_stdwave(pigeon, args, progress_cb):# {{{
             if frames_indexes is not None:
                 if cap_index != frames_indexes[len(frames)]:
                     continue
-            if black_box is not None:
-                frame_bgr[by1:by2, bx1:bx2, :] = 0
-            if focus_box is not None:
-                frame_bgr = frame_bgr[fy1:fy2, fx1:fx2, :]
+            frame_bgr = _get_box_frame(frame_bgr)
             if len(stdwave_indexes) > 0 and cap_index >= stdwave_indexes[0]:
                 cur_cnt += 1 * args.reg_factor
                 stdwave_indexes.pop(0)
@@ -689,7 +704,13 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
         area = 1
         if args.osd_sims:
             embs_sims = np.load(f'{cache_path}/embs_sims.npy')
-            focus_box = get_rect_points(width, height, args.focus_box)
+
+            focus_pts = args.get('focus_pts', None)
+            if focus_pts is not None:
+                focus_pts = get_ploy_points(width, height, focus_pts)
+                focus_box = *np.min(focus_pts, axis=0), *np.max(focus_pts, axis=0)
+            else:
+                focus_box = get_rect_points(width, height, args.focus_box)
             black_box = get_rect_points(width, height, args.black_box)
             if black_box is not None:
                 bx1, by1, bx2, by2 = black_box
@@ -767,14 +788,6 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
                     frame_bgr[by1:by2, bx1:bx2, :] = 0
                 else:
                     cv2.rectangle(frame_bgr, (bx1, by1), (bx2, by2), (0, 0, 0), 2)
-                cv2.putText(frame_bgr,
-                        '%d,%d' % (bx1, by1),
-                        (bx1 + 2, by1 + 16),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (210, 210, 210), 1)
-                cv2.putText(frame_bgr,
-                        '%d,%d' % (bx2, by2),
-                        (bx2 - 65, by2 - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (210, 210, 210), 1)
             cv2.rectangle(frame_bgr, (0, 0), (int(0.8 * width), th), (0, 0, 0), -1)
             cv2.rectangle(frame_bgr, (0, height - th), (width, height), (0, 0, 0), -1)
             try:
@@ -810,7 +823,7 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
                     '%d %.1f S:%d C:%.1f/%.1f %s %s %s %s' % (width,
                         fps, chosen_stride, sum_counts[idx], sum_counts[-1],
                         'L:%.2f' % args.tsm_last_threshold if args.tsm_last_enable else '',
-                        'V:%d' % grap_speed if grap_speed > 0 else '', 
+                        'V:%d' % grap_speed if grap_speed > 0 else '',
                         'P:%.2f' % within_period[idx],
                         'ST' if is_still_frames[idx] else ''),
                     (2, int(0.06 * height)),
@@ -819,15 +832,9 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
                     (255, 255, 255), 2)
 
             if focus_box is not None:
-                cv2.putText(frame_bgr,
-                        '%d,%d' % (fx1, fy1),
-                        (fx1 + 2, fy1 + 16),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
-                cv2.putText(frame_bgr,
-                        '%d,%d' % (fx2, fy2),
-                        (fx2 - 65, fy2 - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
                 cv2.rectangle(frame_bgr, (fx1, fy1), (fx2, fy2), (0, 255, 0), 2)
+            if focus_pts is not None:
+                frame_bgr = cv2.polylines(frame_bgr, [focus_pts], True, (255, 0, 0), 2)
 
             if args.osd_sims and valid_idx < valid_frames_count and valid_idx < len(binframes):
                 frame_bgr[height - INPUT_HEIGHT - 10:, :INPUT_WIDTH + 10, :] = 222

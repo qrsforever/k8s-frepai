@@ -28,6 +28,17 @@ def get_rect_points(w, h, box):
     return x1, y1, x2, y2
 
 
+def get_ploy_points(w, h, pts):
+    result = []
+    for point in pts:
+        if point[0] < 1.0:
+            x, y = int(w * point[0]), int(h * point[1])
+        else:
+            x, y = point
+        result.append((x, y))
+    return np.asarray(result)
+
+
 def draw_osd_sim(sim, size=128):
     fig, ax = plt.subplots()
     plt.axis('off')

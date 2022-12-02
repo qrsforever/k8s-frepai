@@ -9,6 +9,7 @@
 ```json
 {
     "focus_box": [0, 0, 1, 1],
+    "focus_pts": [[0, 0], [1, 1]],
     "black_box": [1, 1, 1, 1],
     "check_box": [],
     "focus_box_repnum": 0,

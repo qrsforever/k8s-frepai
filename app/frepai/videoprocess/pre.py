@@ -21,7 +21,7 @@ import functools
 from sklearn.decomposition import PCA
 from sklearn import preprocessing
 from frepai.utils.easydict import DotDict
-from frepai.utils.draw import get_rect_points
+from frepai.utils.draw import get_rect_points, get_ploy_points
 from frepai.utils.logger import EasyLogger as logger
 from frepai.utils.errcodes import HandlerError
 from frepai.utils import mkdir_p, rmdir_p, easy_wget
@@ -187,7 +187,7 @@ def video_preprocess(args, progress_cb=None):
     if 'https://' in video_path:
         segs = video_path[8:].split('/')
         vname = segs[-1].split('.')[0]
-        coss3_path = os.path.join('/', *segs[1:-2], 'outputs', vname, 'repnet_tf')
+        coss3_path = os.path.join('/', *segs[1:3], 'outputs', vname, 'repnet_tf')
         coss3_delete(coss3_path[1:], logger)
     else:
         vname = 'unknow'
@@ -220,17 +220,31 @@ def video_preprocess(args, progress_cb=None):
     black_box = get_rect_points(width, height, args.black_box)
     if black_box is not None:
         black_x1, black_y1, black_x2, black_y2 = black_box
-    focus_box = get_rect_points(width, height, args.focus_box)
+    focus_pts = args.get('focus_pts', None)
+    if focus_pts is not None:
+        pts = get_ploy_points(width, height, focus_pts)
+        img_bg = np.zeros((height, width, 3), dtype=np.uint8)
+        img_bg = cv2.polylines(img_bg, [pts], True, (0, 255, 0), 1)
+        focus_pts_mask = cv2.fillPoly(img_bg, [pts], (255, 255, 255))
+        focus_box = *np.min(pts, axis=0), *np.max(pts, axis=0)
+    else:
+        focus_box = get_rect_points(width, height, args.focus_box)
+
     if focus_box is not None:
         focus_x1, focus_y1, focus_x2, focus_y2 = focus_box
         w = focus_x2 - focus_x1
         h = focus_y2 - focus_y1
+
     check_box = args.get('check_box', None)
     if check_box is not None:
         check_x1, check_y1, check_x2, check_y2 = get_rect_points(width, height, check_box)
 
+    logger.info(f'{focus_box}, {black_box}, {check_box}, {focus_pts}')
+
     def _get_box_frame(img):
         vbox, cbox = None, None
+        if focus_pts is not None:
+            img = cv2.bitwise_and(img, focus_pts_mask)
         if black_box is not None:
             img[black_y1:black_y2, black_x1:black_x2, :] = 0
         if focus_box is not None:
@@ -300,7 +314,7 @@ def video_preprocess(args, progress_cb=None):
 
         def _mode_frame(feats, feat2idx):
             mode = stats.mode(feats)[0][0]
-            max_cnt, vid_idx = -1, 0 
+            max_cnt, vid_idx = -1, 0
             for value in feat2idx[mode].values():
                 n = len(value)
                 if n > max_cnt:
@@ -422,7 +436,7 @@ def video_preprocess(args, progress_cb=None):
             rmstill_white_buffer = np.zeros((rmstill_white_window, ))
             frames_invalid = True
         resdata['rmstill_area_thres'] = rmstill_area_thres
-        resdata['avg_pred_score'] = args.get('avg_pred_score', 0.2) 
+        resdata['avg_pred_score'] = args.get('avg_pred_score', 0.2)
         resdata['within_period_threshold'] = args.get('within_period_threshold', 0.5)
 
         logger.info(f'rmstill: ({area}, {rmstill_area_thres}, {rmstill_bin_threshold}, {rmstill_noise_level})')
@@ -451,10 +465,10 @@ def video_preprocess(args, progress_cb=None):
         color_lower_value = int(color_buffer_size * color_lower_rate)
         color_upper_value = int(color_buffer_size * color_upper_rate)
         logger.info(f'color_tracker: ({color_area_thres}, {color_lower_value}, {color_upper_value})')
-        resdata['avg_pred_score'] = args.get('avg_pred_score', 0.2) 
+        resdata['avg_pred_score'] = args.get('avg_pred_score', 0.2)
         resdata['within_period_threshold'] = args.get('within_period_threshold', 0.5)
-        resdata['color_lower_value'] = color_lower_value 
-        resdata['color_upper_value'] = color_upper_value 
+        resdata['color_lower_value'] = color_lower_value
+        resdata['color_upper_value'] = color_upper_value
 
     elif args.featpeak_tracker_enbale:
         _height = args.get('featpeak_height_minmax', (-1, -1))
@@ -718,6 +732,7 @@ def video_preprocess(args, progress_cb=None):
     if args.stdwave_tracker_enable:
         stdwave = np.asarray(stdwave)
         if len(stdwave[stdwave > global_feature_minval]) < global_feature_minnum:
+            logger.info('global_feature_minval: {global_feature_minval}, {global_feature_minnum}')
             _send_progress(100, True)
             rmdir_p(os.path.dirname(cache_path))
             return None
@@ -780,6 +795,6 @@ def video_preprocess(args, progress_cb=None):
     resdata['coss3_path'] = coss3_path
     resdata['frame_count'] = all_cnt
     resdata['frame_rate'] = fps
-
     _send_progress(100)
+    logger.info('preprocess end')
     return resdata
