@@ -500,6 +500,9 @@ def video_preprocess(args, progress_cb=None):
         seconds = args.get('stdwave_distance_secs', 0)
         stdwave_distance_size = int(fps * seconds) if seconds > 0 else args.get('stdwave_distance_size', 150)
         stdwave_minstd_thresh = args.get('stdwave_minstd_thresh', 0.5)
+        if grap_speed > 0:
+            stdwave_window_size = max(1, int(stdwave_window_size / grap_speed))
+            stdwave_distance_size = max(1, int(stdwave_distance_size / grap_speed))
         resdata['stdwave_sigma_count'] = stdwave_sigma_count
         resdata['stdwave_sub_average'] = stdwave_sub_average
         resdata['stdwave_window_size'] = stdwave_window_size
@@ -588,6 +591,9 @@ def video_preprocess(args, progress_cb=None):
             frame_hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
             if color_enhance_blur > 0:
                 frame_hsv = cv2.medianBlur(frame_hsv, color_enhance_blur)
+            if devmode:
+                if idx == 2:
+                    logger.info(f'{frame_hsv}')
             if color_select == 0:
                 mask_red_1 = cv2.inRange(frame_hsv, lower_red_1, upper_red_1)
                 mask_red_2 = cv2.inRange(frame_hsv, lower_red_2, upper_red_2)

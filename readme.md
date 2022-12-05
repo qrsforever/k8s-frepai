@@ -75,11 +75,7 @@
 
 ```json
 {
-    "rmstill_frame_enable": false,
-    "diffimpulse_tracker_enable": false,
     "featpeak_tracker_enbale": true,
-    "stdwave_tracker_enable": false,
-
     "featpeak_detect_trough": false,
     "featpeak_window_size": 15,
     "featpeak_data_normal": true,
@@ -101,6 +97,8 @@
     "stdwave_sigma_count": 3.5,
     "stdwave_window_size": 50,
     "stdwave_distance_size": 100,
+    "stdwave_window_secs": 4,
+    "stdwave_distance_secs": 12,
     "stdwave_minstd_thresh": 0.5,
 }
 ```
