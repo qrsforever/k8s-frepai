@@ -736,11 +736,10 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
         )
 
         if args['rmstill_frame_enable']:
-            bottom_text += '%s %s %s %s' % (
-                'A:%.4f' % args['rmstill_rate_threshold'],
+            bottom_text += '%s %s %s' % (
+                'A:%.3f,%.3f' % (args['rmstill_rate_range'][0], args['rmstill_rate_range'][1]),
                 'B:%d' % args['rmstill_bin_threshold'],
-                'G:%.3f' % engine['pred_score'],
-                'T:%.2f' % pigeon['within_period_threshold']
+                'G:%.3f' % engine['pred_score']
             )
         if args['color_tracker_enable']:
             bottom_text += ' %s %s %s %s' % (
@@ -766,10 +765,10 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
         if os.path.exists(f'{cache_path}/binpoints.npy'):
             binpoints = np.load(f'{cache_path}/binpoints.npy')
         if len(binpoints) > 0:
-            rmstill_area_thres = pigeon['rmstill_area_thres']
-            hist_blend = draw_hist_density(np.round(binpoints / rmstill_area_thres, 2), 20, INPUT_WIDTH, INPUT_HEIGHT)
+            rmstill_area_range = pigeon['rmstill_area_range']
+            hist_blend = draw_hist_density(np.round(binpoints / rmstill_area_range[0], 2), 20, INPUT_WIDTH, INPUT_HEIGHT)
             cv2.putText(hist_blend,
-                    '%d' % rmstill_area_thres,
+                    '%d' % rmstill_area_range[0],
                     (int(0.1 * INPUT_WIDTH), int(0.5 * INPUT_HEIGHT)),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7,
                     (0, 0, 0), 2)

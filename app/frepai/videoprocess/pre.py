@@ -420,30 +420,80 @@ def video_preprocess(args, progress_cb=None):
         return cv2.merge(result_planes)
 
     if args.rmstill_frame_enable:
-        area_rate_thres = args.get('rmstill_rate_threshold', 0.001)
-        if area_rate_thres < 0:
-            area_rate_thres = float(1) / (w * h)
+        rmstill_rate_range = args.get('rmstill_rate_range', None)
+        if rmstill_rate_range is not None:
+            area_rate_thres = rmstill_rate_range[0]
+        else:
+            # todo remove
+            area_rate_thres = args.get('rmstill_rate_threshold', 0.001)
+            if area_rate_thres < 0:
+                area_rate_thres = float(1) / (w * h)
+            rmstill_rate_range = [area_rate_thres, 1.0]
+            args['rmstill_rate_range'] = rmstill_rate_range
         rmstill_bin_threshold = args.get('rmstill_bin_threshold', 20)
         rmstill_brightness_norm = args.get('rmstill_brightness_norm', False)
         rmstill_area_mode = args.get('rmstill_area_mode', 0)
+        rmstill_area_range = [math.ceil(rmstill_rate_range[0] * area), math.ceil(rmstill_rate_range[1] * area)]
+
+        # todo remove
         rmstill_noise_level = args.get('rmstill_noise_level', 1)
-        rmstill_area_thres = math.ceil(area_rate_thres * area)
         rmstill_filter_kernel = args.get('rmstill_filter_kernel', 3)
         rmstill_noise_kernel = np.ones((rmstill_filter_kernel, rmstill_filter_kernel), np.uint8)
+
         if area < SMALL_AREA_THRESH:
             rmstill_white_thres = int(args.get('rmstill_white_rate', 0.1) * area)
             rmstill_white_window = args.get('rmstill_white_window', 10)
             rmstill_white_buffer = np.zeros((rmstill_white_window, ))
             frames_invalid = True
-        resdata['rmstill_area_thres'] = rmstill_area_thres
+        resdata['rmstill_area_range'] = rmstill_area_range
         resdata['avg_pred_score'] = args.get('avg_pred_score', 0.2)
         resdata['within_period_threshold'] = args.get('within_period_threshold', 0.5)
 
-        logger.info(f'rmstill: ({area}, {rmstill_area_thres}, {rmstill_bin_threshold}, {rmstill_noise_level})')
+        logger.info(f'rmstill: ({area}, {rmstill_area_range}, {rmstill_bin_threshold})')
 
     elif args.color_tracker_enable:
         color_pre_count = 0
+        color_hsv_range = []
         color_select = args.get('color_select', 8)
+        color_select_range = args.get('color_select_range', [])
+        if color_select < 0 or len(color_select_range) > 0:
+            for item in color_select_range:
+                h_, s_, v_ = [0, 255], [0, 255], [0, 255]
+                for key, val in item.items():
+                    if key == 'h':
+                        h_ = val
+                    elif key == 's':
+                        s_ = val
+                    elif key == 'v':
+                        v_ = val
+                lo = np.array([h_[0], s_[0], v_[0]])
+                hi = np.array([h_[1], s_[1], v_[1]])
+                color_hsv_range.append((lo, hi))
+        else:
+            if color_select == 0:
+                color_hsv_range.append((lower_red_1, upper_red_1))
+                color_hsv_range.append((lower_red_2, upper_red_2))
+            elif color_select == 1:
+                color_hsv_range.append((lower_orange, upper_orange))
+            elif color_select == 2:
+                color_hsv_range.append((lower_yellow, upper_yellow))
+            elif color_select == 3:
+                color_hsv_range.append((lower_green, upper_green))
+            elif color_select == 4:
+                color_hsv_range.append((lower_cyan, upper_cyan))
+            elif color_select == 5:
+                color_hsv_range.append((lower_blue, upper_blue))
+            elif color_select == 6:
+                color_hsv_range.append((lower_purple, upper_purple))
+            elif color_select == 7:
+                color_hsv_range.append((lower_black, upper_black))
+            elif color_select == 8:
+                color_hsv_range.append((lower_white, upper_white))
+            elif color_select == 9:
+                color_hsv_range.append((lower_gray, upper_gray))
+        logger.info(f'{color_hsv_range}')
+        assert len(color_hsv_range) > 0
+
         color_enhance_blur = args.get('color_enhance_blur', 0)
         color_enhance_dilate = args.get('color_enhance_dilate', None)
         if color_enhance_dilate is not None:
@@ -560,7 +610,7 @@ def video_preprocess(args, progress_cb=None):
                 frame_tmp = cv2.dilate(frame_tmp, rmstill_noise_kernel, iterations=rmstill_noise_level)
             val = np.sum(frame_tmp == 255)
             if rmstill_area_mode == 0:
-                if val > rmstill_area_thres:
+                if rmstill_area_range[0] < val < rmstill_area_range[1]:
                     keep_flag = True
                     if devmode:
                         frame_tmp = cv2.cvtColor(frame_tmp, cv2.COLOR_GRAY2RGB)
@@ -571,7 +621,7 @@ def video_preprocess(args, progress_cb=None):
                 if len(contours) > 0:
                     contours = sorted(contours, key=lambda x:cv2.contourArea(x), reverse=True)
                     area = cv2.contourArea(contours[0])
-                    if area > rmstill_area_thres:
+                    if rmstill_area_range[0] < val < rmstill_area_range[1]:
                         keep_flag = True
                         if devmode:
                             frame_tmp = cv2.cvtColor(frame_tmp, cv2.COLOR_GRAY2RGB)
@@ -588,40 +638,18 @@ def video_preprocess(args, progress_cb=None):
                     frames_invalid = False
 
         elif args.color_tracker_enable:
+            color_mask = None
             frame_hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
             if color_enhance_blur > 0:
                 frame_hsv = cv2.medianBlur(frame_hsv, color_enhance_blur)
-            if devmode:
-                if idx == 2:
-                    logger.info(f'{frame_hsv}')
-            if color_select == 0:
-                mask_red_1 = cv2.inRange(frame_hsv, lower_red_1, upper_red_1)
-                mask_red_2 = cv2.inRange(frame_hsv, lower_red_2, upper_red_2)
-                color_mask = cv2.bitwise_or(mask_red_1, mask_red_2)
-            elif color_select == 1:
-                color_mask = cv2.inRange(frame_hsv, lower_orange, upper_orange)
-            elif color_select == 2:
-                color_mask = cv2.inRange(frame_hsv, lower_yellow, upper_yellow)
-            elif color_select == 3:
-                color_mask = cv2.inRange(frame_hsv, lower_green, upper_green)
-            elif color_select == 4:
-                color_mask = cv2.inRange(frame_hsv, lower_cyan, upper_cyan)
-            elif color_select == 5:
-                color_mask = cv2.inRange(frame_hsv, lower_blue, upper_blue)
-            elif color_select == 6:
-                color_mask = cv2.inRange(frame_hsv, lower_purple, upper_purple)
-            elif color_select == 7:
-                color_mask = cv2.inRange(frame_hsv, lower_black, upper_black)
-            elif color_select == 8:
-                color_mask = cv2.inRange(frame_hsv, lower_white, upper_white)
-            elif color_select == 9:
-                color_mask = cv2.inRange(frame_hsv, lower_gray, upper_gray)
+
+            for lo, hi in color_hsv_range:
+                mask = cv2.inRange(frame_hsv, lo, hi)
+                color_mask = mask if color_mask is None else cv2.bitwise_or(color_mask, mask)
+
             for func in global_enhance_funcs:
                 color_mask = func(color_mask)
-            # if color_enhance_dilate is not None:
-            #     color_mask = cv2.dilate(color_mask, color_enhance_dilate[0], iterations=color_enhance_dilate[1])
-            # if color_enhance_erode is not None:
-            #     color_mask = cv2.erode(color_mask, color_enhance_erode[0], iterations=color_enhance_erode[1])
+
             colorval = np.sum(color_mask == 255)
             if colorval > color_area_thres:
                 color_buffer[-1] = 1
@@ -640,6 +668,8 @@ def video_preprocess(args, progress_cb=None):
                 val = np.sum(color_direction_buffer, axis=0)
 
             color_pre_count = color_count
+
+            # logger.info(f'{color_area_thres} vs {colorval} vs {color_pre_count}')
 
             if color_lower_value < val < color_upper_value:
                 keep_flag = True
@@ -738,7 +768,7 @@ def video_preprocess(args, progress_cb=None):
     if args.stdwave_tracker_enable:
         stdwave = np.asarray(stdwave)
         if len(stdwave[stdwave > global_feature_minval]) < global_feature_minnum:
-            logger.info('global_feature_minval: {global_feature_minval}, {global_feature_minnum}')
+            logger.info(f'global_feature_minval: {global_feature_minval}, {global_feature_minnum}')
             _send_progress(100, True)
             rmdir_p(os.path.dirname(cache_path))
             return None

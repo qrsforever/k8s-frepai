@@ -32,11 +32,10 @@
 {
     "rmstill_frame_enable": true,
     "rmstill_bin_threshold": 20,
-    "rmstill_rate_threshold": 0.01,
+    "rmstill_rate_threshold": 0.01,    // remove
+    "rmstill_rate_range": [0.01, 0.08],
     "rmstill_brightness_norm": false,
     "rmstill_area_mode": 0,
-    "rmstill_noise_level": 1,
-    "rmstill_filter_kernel": 3,
     "rmstill_white_rate": 0.1,
     "rmstill_white_window": 10,
     "strides": [1, 2],
