@@ -268,7 +268,7 @@ def video_preprocess(args, progress_cb=None):
     global_enhance_funcs = []
     global_remove_shadow = args.get('global_remove_shadow', None)
     grap_speed = args.get('global_grap_speed', -1)
-    if grap_speed > 0:
+    if grap_speed > 1:
         global_grap_step = grap_speed
     else:
         global_grap_step = int(fps * args.get('global_grap_interval', -1))
@@ -421,10 +421,7 @@ def video_preprocess(args, progress_cb=None):
 
     if args.rmstill_frame_enable:
         rmstill_rate_range = args.get('rmstill_rate_range', None)
-        if rmstill_rate_range is not None:
-            area_rate_thres = rmstill_rate_range[0]
-        else:
-            # todo remove
+        if rmstill_rate_range is None:
             area_rate_thres = args.get('rmstill_rate_threshold', 0.001)
             if area_rate_thres < 0:
                 area_rate_thres = float(1) / (w * h)
@@ -503,7 +500,14 @@ def video_preprocess(args, progress_cb=None):
         if color_enhance_erode is not None:
             kernel, iterc = color_enhance_erode
             color_enhance_erode = (np.ones((kernel, kernel), np.uint8), iterc)
-        color_rate_threshold = args.get('color_rate_threshold', 0.9)
+
+        color_rate_range = args.get('color_rate_range', None)
+        if color_rate_range is None:
+            color_rate_threshold = args.get('color_rate_threshold', 0.9)
+            color_rate_range = [color_rate_threshold, 1.0]
+            args['color_rate_range'] = color_rate_range
+        color_area_range = [math.ceil(color_rate_range[0] * area), math.ceil(color_rate_range[1] * area)]
+
         color_buffer_size = args.get('color_buffer_size', 12)
         color_lower_rate = args.get('color_lower_rate', 0.2)
         color_upper_rate = args.get('color_upper_rate', 0.8)
@@ -511,10 +515,10 @@ def video_preprocess(args, progress_cb=None):
         color_buffer = np.zeros((color_buffer_size, ))
         if color_track_direction > 0:
             color_direction_buffer = np.zeros_like(color_buffer)
-        color_area_thres = math.ceil(color_rate_threshold * area)
         color_lower_value = int(color_buffer_size * color_lower_rate)
         color_upper_value = int(color_buffer_size * color_upper_rate)
-        logger.info(f'color_tracker: ({color_area_thres}, {color_lower_value}, {color_upper_value})')
+        logger.info(f'color_tracker: ({color_area_range}, {color_lower_value}, {color_upper_value})')
+        resdata['color_area_range'] = color_area_range
         resdata['avg_pred_score'] = args.get('avg_pred_score', 0.2)
         resdata['within_period_threshold'] = args.get('within_period_threshold', 0.5)
         resdata['color_lower_value'] = color_lower_value
@@ -651,7 +655,7 @@ def video_preprocess(args, progress_cb=None):
                 color_mask = func(color_mask)
 
             colorval = np.sum(color_mask == 255)
-            if colorval > color_area_thres:
+            if color_area_range[0] < colorval < color_area_range[1]:
                 color_buffer[-1] = 1
             else:
                 color_buffer[-1] = 0
@@ -668,8 +672,6 @@ def video_preprocess(args, progress_cb=None):
                 val = np.sum(color_direction_buffer, axis=0)
 
             color_pre_count = color_count
-
-            # logger.info(f'{color_area_thres} vs {colorval} vs {color_pre_count}')
 
             if color_lower_value < val < color_upper_value:
                 keep_flag = True

@@ -742,11 +742,10 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
                 'G:%.3f' % engine['pred_score']
             )
         if args['color_tracker_enable']:
-            bottom_text += ' %s %s %s %s' % (
-                'A:%.2f' % args['color_rate_threshold'],
-                'B:%d' % args['color_buffer_size'],
-                'C:%.2f,%.2f' % (args['color_lower_rate'], args['color_upper_rate']),
-                'D:%d' % args['color_track_direction']
+            bottom_text += ' %s|%s|%d|%d' % (
+                '%.3f,%.3f' % (args['color_rate_range'][0], args['color_rate_range'][1]),
+                '%.2f,%.2f' % (args['color_lower_rate'], args['color_upper_rate']),
+                args['color_buffer_size'], args['color_track_direction']
             )
 
         idx, valid_idx = 0, 0

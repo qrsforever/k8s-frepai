@@ -9,7 +9,7 @@
 ```json
 {
     "focus_box": [0, 0, 1, 1],
-    "focus_pts": [[0, 0], [1, 1]],
+    "focus_pts": [[0, 0], [1, 1], [2, 2]],
     "black_box": [1, 1, 1, 1],
     "check_box": [],
     "focus_box_repnum": 0,
@@ -32,8 +32,7 @@
 {
     "rmstill_frame_enable": true,
     "rmstill_bin_threshold": 20,
-    "rmstill_rate_threshold": 0.01,    // remove
-    "rmstill_rate_range": [0.01, 0.08],
+    "rmstill_rate_range": [0.01, 0.8],
     "rmstill_brightness_norm": false,
     "rmstill_area_mode": 0,
     "rmstill_white_rate": 0.1,
@@ -59,7 +58,7 @@
     "avg_pred_score": 0.2,
     "within_period_threshold": 0.5,
     "color_select": 8,
-    "color_rate_threshold": 0.9,
+    "color_rate_range": [0.2, 0.9],
     "color_enhance_blur": 25,
     "color_enhance_dilate": [3, 1],
     "color_enhance_erode": [3, 1],
@@ -67,6 +66,10 @@
     "color_lower_rate": 0.2,
     "color_upper_rate": 0.8,
     "color_track_direction": 0,
+    "color_select_range": [
+        {"h": [], "s": [], "v":[]},
+        {"v":[0, 70]}
+    ]
 }
 ```
 
