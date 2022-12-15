@@ -241,7 +241,7 @@ def video_preprocess(args, progress_cb=None):
 
     logger.info(f'{focus_box}, {black_box}, {check_box}, {focus_pts}')
 
-    def _get_box_frame(img):
+    def _get_box_frame(img):# {{{
         vbox, cbox = None, None
         if focus_pts is not None:
             img = cv2.bitwise_and(img, focus_pts_mask)
@@ -251,7 +251,7 @@ def video_preprocess(args, progress_cb=None):
             vbox = img[focus_y1:focus_y2, focus_x1:focus_x2, :]
         if check_box is not None:
             cbox = img[check_y1:check_y2, check_x1:check_x2, :]
-        return vbox, cbox
+        return vbox, cbox# }}}
 
     area, frames_invalid = w * h, False
     if w < 0 or h < 0 or area < MIN_AREA_THRESH:
@@ -370,7 +370,7 @@ def video_preprocess(args, progress_cb=None):
 
     resdata['video_path'] = video_path
 
-    # global_bg_frame_ = [None, None]
+    # global_bg_frame_ = [None, None]{{{
     # global_bg_window = args.get('global_bg_window', 0)
     # global_bg_atonce = args.get('global_bg_atonce', True)
     # if global_bg_window > 0:
@@ -388,9 +388,9 @@ def video_preprocess(args, progress_cb=None):
     #                 if feat == mode:
     #                     global_bg_frame_[0] = frame
     #                     return frame
-    #     return global_bg_frame_[1]
+    #     return global_bg_frame_[1]}}}
 
-    def _calc_feat(img, dtype=1):
+    def _calc_feat(img, dtype=1):# {{{
         feat = np.sort(img.ravel())
         if isinstance(global_hdiff_rate, (tuple, list)):
             low, hight = int(global_hdiff_rate[0] * len(feat)), int(global_hdiff_rate[1] * len(feat))
@@ -405,9 +405,9 @@ def video_preprocess(args, progress_cb=None):
             raise HandlerError(80004, f'unkown global_feature_select [{global_feature_select}]')
         if dtype == 1: # int
             feat = int(feat)
-        return 0.001 if feat == 0 else feat
+        return 0.001 if feat == 0 else feat# }}}
 
-    def _remove_shadow(img, dksize=3, bksize=5, normalize=True):
+    def _remove_shadow(img, dksize=3, bksize=5, normalize=True):# {{{
         result_planes = []
         bgr_planes = cv2.split(img)
         for plane in bgr_planes:
@@ -417,9 +417,25 @@ def video_preprocess(args, progress_cb=None):
             if normalize:
                 img = cv2.normalize(img, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8UC1)
             result_planes.append(img)
-        return cv2.merge(result_planes)
+        return cv2.merge(result_planes)# }}}
 
-    if args.rmstill_frame_enable:
+    def _parse_color_range(color_range):# {{{
+        hsv_range = []
+        for item in color_range:
+            h_, s_, v_ = [0, 255], [0, 255], [0, 255]
+            for key, val in item.items():
+                if key == 'h':
+                    h_ = val
+                elif key == 's':
+                    s_ = val
+                elif key == 'v':
+                    v_ = val
+            lo = np.array([h_[0], s_[0], v_[0]])
+            hi = np.array([h_[1], s_[1], v_[1]])
+            hsv_range.append((lo, hi))
+        return hsv_range# }}}
+
+    if args.rmstill_frame_enable:# {{{
         rmstill_rate_range = args.get('rmstill_rate_range', None)
         if rmstill_rate_range is None:
             area_rate_thres = args.get('rmstill_rate_threshold', 0.001)
@@ -432,11 +448,6 @@ def video_preprocess(args, progress_cb=None):
         rmstill_area_mode = args.get('rmstill_area_mode', 0)
         rmstill_area_range = [math.ceil(rmstill_rate_range[0] * area), math.ceil(rmstill_rate_range[1] * area)]
 
-        # todo remove
-        rmstill_noise_level = args.get('rmstill_noise_level', 1)
-        rmstill_filter_kernel = args.get('rmstill_filter_kernel', 3)
-        rmstill_noise_kernel = np.ones((rmstill_filter_kernel, rmstill_filter_kernel), np.uint8)
-
         if area < SMALL_AREA_THRESH:
             rmstill_white_thres = int(args.get('rmstill_white_rate', 0.1) * area)
             rmstill_white_window = args.get('rmstill_white_window', 10)
@@ -447,8 +458,8 @@ def video_preprocess(args, progress_cb=None):
         resdata['within_period_threshold'] = args.get('within_period_threshold', 0.5)
 
         logger.info(f'rmstill: ({area}, {rmstill_area_range}, {rmstill_bin_threshold})')
-
-    elif args.color_tracker_enable:
+# }}}
+    elif args.color_tracker_enable:# {{{
         color_pre_count = 0
         color_hsv_range = []
         color_select = args.get('color_select', 8)
@@ -492,15 +503,6 @@ def video_preprocess(args, progress_cb=None):
         assert len(color_hsv_range) > 0
 
         color_enhance_blur = args.get('color_enhance_blur', 0)
-        color_enhance_dilate = args.get('color_enhance_dilate', None)
-        if color_enhance_dilate is not None:
-            kernel, iterc = color_enhance_dilate
-            color_enhance_dilate = (np.ones((kernel, kernel), np.uint8), iterc)
-        color_enhance_erode = args.get('color_enhance_erode', None)
-        if color_enhance_erode is not None:
-            kernel, iterc = color_enhance_erode
-            color_enhance_erode = (np.ones((kernel, kernel), np.uint8), iterc)
-
         color_rate_range = args.get('color_rate_range', None)
         if color_rate_range is None:
             color_rate_threshold = args.get('color_rate_threshold', 0.9)
@@ -523,8 +525,29 @@ def video_preprocess(args, progress_cb=None):
         resdata['within_period_threshold'] = args.get('within_period_threshold', 0.5)
         resdata['color_lower_value'] = color_lower_value
         resdata['color_upper_value'] = color_upper_value
+# }}}
+    elif args.stdwave_tracker_enable:# {{{
+        stdwave_sub_average = args.get('stdwave_sub_average', True)
+        stdwave_sigma_count = args.get('stdwave_sigma_count', 3.0)
+        seconds = args.get('stdwave_window_secs', 0)
+        stdwave_window_size = int(fps * seconds) if seconds > 0 else args.get('stdwave_window_size', 50)
+        seconds = args.get('stdwave_distance_secs', 0)
+        stdwave_distance_size = int(fps * seconds) if seconds > 0 else args.get('stdwave_distance_size', 150)
+        stdwave_minstd_thresh = args.get('stdwave_minstd_thresh', 0.5)
+        if grap_speed > 0:
+            stdwave_window_size = max(1, int(stdwave_window_size / grap_speed))
+            stdwave_distance_size = max(1, int(stdwave_distance_size / grap_speed))
+        stdwave_hsv_range = _parse_color_range(args.get('stdwave_color_select', []))
+        stdwave_hsv_rate = args.get('stdwave_hsv_rate', 0.3)
 
-    elif args.featpeak_tracker_enbale:
+        resdata['stdwave_sigma_count'] = stdwave_sigma_count
+        resdata['stdwave_sub_average'] = stdwave_sub_average
+        resdata['stdwave_window_size'] = stdwave_window_size
+        resdata['stdwave_distance_size'] = stdwave_distance_size
+        resdata['stdwave_minstd_thresh'] = stdwave_minstd_thresh
+        logger.info(f'stdwave_tracker: ({stdwave_sigma_count}, {stdwave_window_size}, {stdwave_distance_size})')
+# }}}
+    elif args.featpeak_tracker_enbale:# {{{
         _height = args.get('featpeak_height_minmax', (-1, -1))
         _width = args.get('featpeak_width_minmax', (-1, -1))
         _prominence = args.get('featpeak_prominence_minmax', (10, -1))
@@ -538,33 +561,15 @@ def video_preprocess(args, progress_cb=None):
         resdata['featpeak_height_minmax'] = (_height, -1) if isinstance(_height, int) else _height
         resdata['featpeak_width_minmax'] = (_width, -1) if isinstance(_width, int) else _width
         resdata['featpeak_prominence_minmax'] = (_prominence, -1) if isinstance(_prominence, int) else _prominence
-
-    elif args.direction_tracker_enable:
+# }}}
+    elif args.direction_tracker_enable:# {{{
         direction_arrow = args.get('direction_arrow', 'lr') # lr, rl, tb, bt
         direction_agg_axis = 0 if direction_arrow in ('rl', 'lr') else 1
         resdata['direction_inverse'] = True if direction_arrow in ('rl', 'bt') else False
         resdata['direction_scale_threshold'] = args.get('direction_scale_threshold', 2.0)
         resdata['direction_window_size'] = args.get('direction_window_size', 10)
-
-    elif args.stdwave_tracker_enable:
-        stdwave_sub_average = args.get('stdwave_sub_average', True)
-        stdwave_sigma_count = args.get('stdwave_sigma_count', 3.0)
-        seconds = args.get('stdwave_window_secs', 0)
-        stdwave_window_size = int(fps * seconds) if seconds > 0 else args.get('stdwave_window_size', 50)
-        seconds = args.get('stdwave_distance_secs', 0)
-        stdwave_distance_size = int(fps * seconds) if seconds > 0 else args.get('stdwave_distance_size', 150)
-        stdwave_minstd_thresh = args.get('stdwave_minstd_thresh', 0.5)
-        if grap_speed > 0:
-            stdwave_window_size = max(1, int(stdwave_window_size / grap_speed))
-            stdwave_distance_size = max(1, int(stdwave_distance_size / grap_speed))
-        resdata['stdwave_sigma_count'] = stdwave_sigma_count
-        resdata['stdwave_sub_average'] = stdwave_sub_average
-        resdata['stdwave_window_size'] = stdwave_window_size
-        resdata['stdwave_distance_size'] = stdwave_distance_size
-        resdata['stdwave_minstd_thresh'] = stdwave_minstd_thresh
-        logger.info(f'stdwave_tracker: ({stdwave_sigma_count}, {stdwave_window_size}, {stdwave_distance_size})')
-
-    elif args.diffimpulse_tracker_enable:
+# }}}
+    elif args.diffimpulse_tracker_enable:# {{{
         diffimpulse_one_threshold = int(args.get('diffimpulse_rate_threshold', 0.02) * area)
         diffimpulse_bin_threshold = args.get('diffimpulse_bin_threshold', 20)
         diffimpulse_window_size = args.get('diffimpulse_window_size', [7, 5])
@@ -572,13 +577,13 @@ def video_preprocess(args, progress_cb=None):
         resdata['diffimpulse_bin_threshold'] = diffimpulse_bin_threshold
         resdata['diffimpulse_window_size'] = diffimpulse_window_size
         logger.info(f'diff_impulse: ({diffimpulse_one_threshold}, {diffimpulse_bin_threshold}, {diffimpulse_window_size})')
-
+# }}}
     tile_shuffle = args.get('input_tile_shuffle', False)
 
     stdwave, diffimpulse, featpeak, direction = [], [], [], []
     keepframe, keepidxes, half_focus_width = [], [], -1
     if devmode:
-        binframes, binpoints, contareas, colorvals = [], [], [], []
+        binframes, binpoints, contareas, colorvals, waverates = [], [], [], [], []
     idx, frame_tmp = 0, np.zeros((h, w), dtype=np.uint8)
     pre_frame_gray, pre_check_gray = global_gray_frame, global_gray_check
     ret, frame_raw = cap.read()
@@ -597,21 +602,16 @@ def video_preprocess(args, progress_cb=None):
         if global_blur_type != "none":
             frame_gray = gray_image_blur(frame_gray, global_blur_type, global_filter_kernel)
 
-        if args.rmstill_frame_enable:
+        if args.rmstill_frame_enable:# {{{
             if rmstill_brightness_norm:
                 h, s, v = cv2.split(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV))
                 v = np.array((v - np.mean(v)) / np.std(v) * 32 + 127, dtype=np.uint8)
                 frame_bgr = cv2.cvtColor(cv2.merge([h, s, v]), cv2.COLOR_HSV2BGR)
-            frame_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+                frame_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
             frame_tmp = cv2.absdiff(frame_gray, pre_frame_gray)
             frame_tmp = cv2.threshold(frame_tmp, rmstill_bin_threshold, 255, cv2.THRESH_BINARY)[1]
             for func in global_enhance_funcs:
                 frame_tmp = func(frame_tmp)
-            # TODO will be remove
-            if rmstill_noise_level > 0:
-                # Opening
-                frame_tmp = cv2.erode(frame_tmp, rmstill_noise_kernel, iterations=rmstill_noise_level)
-                frame_tmp = cv2.dilate(frame_tmp, rmstill_noise_kernel, iterations=rmstill_noise_level)
             val = np.sum(frame_tmp == 255)
             if rmstill_area_mode == 0:
                 if rmstill_area_range[0] < val < rmstill_area_range[1]:
@@ -625,7 +625,7 @@ def video_preprocess(args, progress_cb=None):
                 if len(contours) > 0:
                     contours = sorted(contours, key=lambda x:cv2.contourArea(x), reverse=True)
                     area = cv2.contourArea(contours[0])
-                    if rmstill_area_range[0] < val < rmstill_area_range[1]:
+                    if rmstill_area_range[0] < area < rmstill_area_range[1]:
                         keep_flag = True
                         if devmode:
                             frame_tmp = cv2.cvtColor(frame_tmp, cv2.COLOR_GRAY2RGB)
@@ -640,8 +640,8 @@ def video_preprocess(args, progress_cb=None):
                 if wpoint_mean > rmstill_white_thres:
                     logger.info(f'wpoint_mean[{wpoint_mean}] vs rmstill_white_thres[{rmstill_white_thres}], {rmstill_white_window}')
                     frames_invalid = False
-
-        elif args.color_tracker_enable:
+# }}}
+        elif args.color_tracker_enable:# {{{
             color_mask = None
             frame_hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
             if color_enhance_blur > 0:
@@ -679,14 +679,48 @@ def video_preprocess(args, progress_cb=None):
                     colorvals.append([colorval , val])
                     frame_tmp = cv2.cvtColor(color_mask, cv2.COLOR_GRAY2RGB)
                     binframes.append(cv2.resize(frame_tmp, (INPUT_WIDTH, INPUT_HEIGHT)))
+# }}}
+        elif args.stdwave_tracker_enable:# {{{
+            frame_tmp = cv2.absdiff(frame_gray, pre_frame_gray)
+            feat = _calc_feat(frame_tmp)
+            if pre_check_gray is not None:
+                feat = max(0, feat - _calc_feat(cv2.absdiff(check_gray, pre_check_gray)))
+            rate_ = 0
+            if len(stdwave_hsv_range) > 0 and feat > global_feature_minval:
+                frame_hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
+                ys, xs = np.where((frame_tmp > global_feature_minval))
+                count = 0
+                for y, x in zip(ys, xs):
+                    hsv = frame_hsv[y, x]
+                    for lo, hi in stdwave_hsv_range:
+                        if (lo[0] < hsv[0] < hi[0]) and (lo[1] < hsv[1] < hi[1]) and \
+                                (lo[2] < hsv[2] < hi[2]):
+                            count += 1
+                            break
+                rate_ = round(count / len(xs), 3)
+                if rate_ < stdwave_hsv_rate:
+                    feat = 0
+            if devmode:
+                waverates.append(rate_)
+            stdwave.append(feat)
 
-        elif args.featpeak_tracker_enbale:
+            if debug_write_video: # debug
+                if len(stdwave) < 500:
+                    writer.write(frame_raw)
+                if len(stdwave) == 500:
+                    logger.info(f'{frame_bgr.shape} {frame_raw.shape}')
+                    writer.release()
+                    logger.info(f'{np.array(stdwave, np.int16)}')
+                    os.system(f'ffmpeg -an -i {cache_path}/_pre_video.mp4 {ffmpeg_args} {cache_path}/pre-video.mp4 2>/dev/null')
+                    resdata['upload_files'].append('pre-video.mp4')
+# }}}
+        elif args.featpeak_tracker_enbale:# {{{
             frame_tmp = cv2.absdiff(frame_gray, pre_frame_gray)
             feat = _calc_feat(frame_tmp)
             feat = int(np.mean(feat))
             featpeak.append(feat)
-
-        elif args.direction_tracker_enable:
+# }}}
+        elif args.direction_tracker_enable:# {{{
             frame_tmp = cv2.absdiff(frame_gray, pre_frame_gray)
             if half_focus_width < 0:
                 if direction_agg_axis == 0:
@@ -710,24 +744,8 @@ def video_preprocess(args, progress_cb=None):
                         cv2.FONT_HERSHEY_SIMPLEX,
                         0.6, (0, 0, 0), 2)
                 writer.write(frame_raw)
-
-        elif args.stdwave_tracker_enable:
-            feat = _calc_feat(cv2.absdiff(frame_gray, pre_frame_gray))
-            if pre_check_gray is not None:
-                feat = max(0, feat - _calc_feat(cv2.absdiff(check_gray, pre_check_gray)))
-            stdwave.append(feat)
-
-            if debug_write_video: # debug
-                if len(stdwave) < 500:
-                    writer.write(frame_raw)
-                if len(stdwave) == 500:
-                    logger.info(f'{frame_bgr.shape} {frame_raw.shape}')
-                    writer.release()
-                    logger.info(f'{np.array(stdwave, np.int16)}')
-                    os.system(f'ffmpeg -an -i {cache_path}/_pre_video.mp4 {ffmpeg_args} {cache_path}/pre-video.mp4 2>/dev/null')
-                    resdata['upload_files'].append('pre-video.mp4')
-
-        elif args.diffimpulse_tracker_enable:
+# }}}
+        elif args.diffimpulse_tracker_enable:# {{{
             frame_tmp = cv2.absdiff(frame_gray, pre_frame_gray)
             cc = np.sum(frame_tmp > diffimpulse_bin_threshold)
             if devmode:
@@ -736,7 +754,7 @@ def video_preprocess(args, progress_cb=None):
                 diffimpulse.append(1)
             else:
                 diffimpulse.append(0)
-
+# }}}
         if keep_flag:
             if focus_box is not None:
                 if args.focus_box_repnum > 1:
@@ -770,12 +788,14 @@ def video_preprocess(args, progress_cb=None):
     if args.stdwave_tracker_enable:
         stdwave = np.asarray(stdwave)
         if len(stdwave[stdwave > global_feature_minval]) < global_feature_minnum:
-            logger.info(f'global_feature_minval: {global_feature_minval}, {global_feature_minnum}')
+            logger.warning(f'global_feature_minval: {global_feature_minval}, {global_feature_minnum}')
             _send_progress(100, True)
             rmdir_p(os.path.dirname(cache_path))
             return None
         np.save(f'{cache_path}/stdwave_data.npy', stdwave)
-        resdata['upload_files'].append('stdwave_data.npy')
+        if devmode:
+            np.save(f'{cache_path}/stdwave_rates.npy', waverates)
+        # resdata['upload_files'].append('stdwave_data.npy')
     elif args.direction_tracker_enable:
         direction = np.asarray(direction)
         features = direction[:, 0]

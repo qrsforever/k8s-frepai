@@ -313,6 +313,7 @@ def _post_stdwave(pigeon, args, progress_cb):# {{{
         tmp_video_file = f'{cache_path}/_stdwave.mp4'
         stdwave_data = np.load(f'{cache_path}/stdwave_data.npy')
         stdwave_post = np.load(f'{cache_path}/stdwave_post.npy')
+        stdwave_rate = np.load(f'{cache_path}/stdwave_rates.npy')
         N, T = len(stdwave_data), pigeon['stdwave_threshold']
         figwidth = min(120, int(all_frames_count / 100))
         fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(figwidth, 8), sharex=True, tight_layout=False)
@@ -391,7 +392,14 @@ def _post_stdwave(pigeon, args, progress_cb):# {{{
                 cur_cnt += 1 * args.reg_factor
                 stdwave_indexes.pop(0)
             sum_counts.append(cur_cnt)
-            frames.append(cv2.resize(frame_bgr, (INPUT_WIDTH, INPUT_HEIGHT)))
+            frame = cv2.resize(frame_bgr, (INPUT_WIDTH, INPUT_HEIGHT))
+            cv2.putText(frame,
+                    '%.3f %d' % (stdwave_rate[cap_index], stdwave_data[cap_index]),
+                    (2, 50),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    fontscale,
+                    (255, 0, 0), 2)
+            frames.append(frame)
         cap.release()
 
         progress_cb(70)
@@ -429,11 +437,9 @@ def _post_stdwave(pigeon, args, progress_cb):# {{{
                         fontscale,
                         (0, 0, 0), 2)
                 cv2.putText(img,
-                        "%s %s N:%.2f S:%.3f T:%.2f" % (
-                            bg_focus_str,
-                            '%s' % bg_check_str if bg_check_secs > 0 else '',
-                            stdwave_sigma_count,
-                            std, T),
+                        "N:%.2f S:%.3f T:%.2f %s %s" % (
+                            stdwave_sigma_count, std, T,
+                            bg_focus_str, '%s' % bg_check_str if bg_check_secs > 0 else ''),
                         (INPUT_WIDTH + 12, height - int(th * 0.35)),
                         cv2.FONT_HERSHEY_SIMPLEX,
                         fontscale,

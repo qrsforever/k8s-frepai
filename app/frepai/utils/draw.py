@@ -19,6 +19,9 @@ from matplotlib.colors import LogNorm
 def get_rect_points(w, h, box):
     if box[0] == box[2] and box[1] == box[3]:
         return None
+    # TODO
+    if box[0] == 0 and box[1] == 0 and box[2] == 1 and box[3] == 1:
+        box = [0.4, 0.4, 0.6, 0.6]
     if box[0] < 1.0 and box[1] < 1.0 and box[2] <= 1.0 and box[3] <= 1.0:
         x1, y1 = int(w * box[0]), int(h * box[1])
         x2, y2 = int(w * box[2]), int(h * box[3])

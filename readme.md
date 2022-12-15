@@ -22,7 +22,10 @@
     "global_filter_kernel": 3,
     "global_feature_select": "mean",
     "global_hdiff_rate": 0.3,
-    "global_mask_enhance": { "dilate": [3, 1], "erode": [3, 1] },
+    "global_mask_enhance": {
+        "erode": [3, 1],
+        "dilate": [3, 1]
+    },
 }
 ```
 
@@ -60,18 +63,36 @@
     "color_select": 8,
     "color_rate_range": [0.2, 0.9],
     "color_enhance_blur": 25,
-    "color_enhance_dilate": [3, 1],
-    "color_enhance_erode": [3, 1],
     "color_buffer_size": 12,
     "color_lower_rate": 0.2,
     "color_upper_rate": 0.8,
     "color_track_direction": 0,
     "color_select_range": [
-        {"h": [], "s": [], "v":[]},
+        {"h":[1, 20], "s": [20, 50], "v": [80, 255]},
         {"v":[0, 70]}
     ]
 }
 ```
+
+
+### stdwave
+
+```json
+{
+    "stdwave_tracker_enable": true,
+    "stdwave_sub_average": true,
+    "stdwave_sigma_count": 3.5,
+    "stdwave_window_secs": 4,
+    "stdwave_distance_secs": 12,
+    "stdwave_minstd_thresh": 0.5,
+    "stdwave_hsv_rate": 0.3,
+    "stdwave_color_select": [
+        {"h":[1, 20], "s": [20, 50], "v": [80, 255]},
+        {"v":[0, 70]}
+    ]
+}
+```
+
 
 ### featpeak
 
@@ -87,21 +108,6 @@
     "featpeak_height_minmax": [-1, -1],
     "featpeak_width_minmax": [-1, -1],
     "featpeak_prominence_minmax": [10, -1],
-}
-```
-
-### stdwave
-
-```json
-{
-    "stdwave_tracker_enable": true,
-    "stdwave_sub_average": true,
-    "stdwave_sigma_count": 3.5,
-    "stdwave_window_size": 50,
-    "stdwave_distance_size": 100,
-    "stdwave_window_secs": 4,
-    "stdwave_distance_secs": 12,
-    "stdwave_minstd_thresh": 0.5,
 }
 ```
 

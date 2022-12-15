@@ -274,7 +274,7 @@ def _engine_featpeak(pigeon, progress_cb):
 ##################################################################
 
 
-def _engine_direction(pigeon, progress_cb):
+def _engine_direction(pigeon, progress_cb):# {{{
     direction_inverse = pigeon['direction_inverse']
     direction_scale_threshold = pigeon['direction_scale_threshold']
     direction_window_size = pigeon['direction_window_size']
@@ -306,7 +306,7 @@ def _engine_direction(pigeon, progress_cb):
             (0.4, 1.0), 25)
     progress_cb(100, True)
     logger.info(f'{peaks_indices} {properties}')
-    return pigeon
+    return pigeon# }}}
 
 
 ##################################################################
