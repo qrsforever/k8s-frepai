@@ -274,6 +274,7 @@ def video_preprocess(args, progress_cb=None):
         global_grap_step = int(fps * args.get('global_grap_interval', -1))
     global_blur_type = args.get('global_blur_type', 'none')
     global_filter_kernel = args.get('global_filter_kernel', 3)
+    global_lowest_bright = args.get('global_lowest_bright', None)
     global_feature_select = args.get('global_feature_select', 'mean')
     global_feature_minval = args.get('global_feature_minval', 10)
     global_feature_minnum = args.get('global_feature_minnum', 50)
@@ -580,7 +581,7 @@ def video_preprocess(args, progress_cb=None):
 # }}}
     tile_shuffle = args.get('input_tile_shuffle', False)
 
-    stdwave, diffimpulse, featpeak, direction = [], [], [], []
+    brightvals, stdwave, diffimpulse, featpeak, direction = [], [], [], [], []
     keepframe, keepidxes, half_focus_width = [], [], -1
     if devmode:
         binframes, binpoints, contareas, colorvals, waverates = [], [], [], [], []
@@ -602,9 +603,17 @@ def video_preprocess(args, progress_cb=None):
         if global_blur_type != "none":
             frame_gray = gray_image_blur(frame_gray, global_blur_type, global_filter_kernel)
 
+        frame_hsv = None
+        if global_lowest_bright is not None:
+            frame_hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
+            _, _, v = cv2.split(frame_hsv)
+            brightvals.append(np.max(v))
+
         if args.rmstill_frame_enable:# {{{
             if rmstill_brightness_norm:
-                h, s, v = cv2.split(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV))
+                if frame_hsv is None:
+                    frame_hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
+                h, s, v = cv2.split(frame_hsv)
                 v = np.array((v - np.mean(v)) / np.std(v) * 32 + 127, dtype=np.uint8)
                 frame_bgr = cv2.cvtColor(cv2.merge([h, s, v]), cv2.COLOR_HSV2BGR)
                 frame_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
@@ -643,7 +652,8 @@ def video_preprocess(args, progress_cb=None):
 # }}}
         elif args.color_tracker_enable:# {{{
             color_mask = None
-            frame_hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
+            if frame_hsv is None:
+                frame_hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
             if color_enhance_blur > 0:
                 frame_hsv = cv2.medianBlur(frame_hsv, color_enhance_blur)
 
@@ -687,7 +697,8 @@ def video_preprocess(args, progress_cb=None):
                 feat = max(0, feat - _calc_feat(cv2.absdiff(check_gray, pre_check_gray)))
             rate_ = 0
             if len(stdwave_hsv_range) > 0 and feat > global_feature_minval:
-                frame_hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
+                if frame_hsv is None:
+                    frame_hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
                 ys, xs = np.where((frame_tmp > global_feature_minval))
                 count = 0
                 for y, x in zip(ys, xs):
@@ -785,6 +796,13 @@ def video_preprocess(args, progress_cb=None):
     if devmode and len(debug_data) > 0:
         logger.info(debug_data)
 
+    if global_lowest_bright is not None:
+        if np.mean(brightvals) < global_lowest_bright:
+            logger.warning(f'global_lowest_bright: {global_lowest_bright}')
+            _send_progress(100, True)
+            rmdir_p(os.path.dirname(cache_path))
+            return None
+
     if args.stdwave_tracker_enable:
         stdwave = np.asarray(stdwave)
         if len(stdwave[stdwave > global_feature_minval]) < global_feature_minnum:
@@ -836,6 +854,8 @@ def video_preprocess(args, progress_cb=None):
         np.save(f'{cache_path}/keepidxes.npy', np.asarray(keepidxes))
 
     if devmode:
+        if len(brightvals) > 0:
+            np.save(f'{cache_path}/brightvals.npy', np.asarray(brightvals))
         if len(binpoints) > 0:
             np.save(f'{cache_path}/binpoints.npy', np.asarray(binpoints))
         if len(binframes) > 0:

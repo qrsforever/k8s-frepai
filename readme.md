@@ -22,6 +22,7 @@
     "global_filter_kernel": 3,
     "global_feature_select": "mean",
     "global_hdiff_rate": 0.3,
+    "global_lowest_bright": 50,
     "global_mask_enhance": {
         "erode": [3, 1],
         "dilate": [3, 1]
@@ -42,6 +43,7 @@
     "rmstill_white_window": 10,
     "strides": [1, 2],
     "avg_pred_score": 0.2,
+    "input_tile_shuffle": false,
     "within_period_threshold": 0.5,
     "tsm_last_enable": false,
     "tsm_last_threshold": 0.5,

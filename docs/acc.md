@@ -19,19 +19,21 @@
 {
     "focus_box": [0.341,0.075,0.514,0.175],
     "focus_box_repnum": 3,
+    "input_tile_shuffle": true,
     "color_tracker_enable": true,
     "color_select": -1,
     "color_select_range": [
          {"v": [0, 70]}
     ],
+    "input_tile_shuffle": true,
+    "global_lowest_bright": 100,
     "color_enhance_blur": 3,
-    "color_rate_range":[0.02, 1.0]
-    "color_rate_threshold": 0.02,
+    "color_rate_threshold": 0.015,
     "color_buffer_size": 18,
     "color_lower_rate": 0.2,
     "color_upper_rate": 0.8,
     "color_track_direction": 0,
-    "reg_factor":1,   "strides": [1],
+    "reg_factor": 0.5,   "strides": [1],
     "within_period_threshold": 0.5
 }
 ```
@@ -109,6 +111,23 @@
 ```
 
 ```
+锯切踏杆_新版
+{
+    "focus_box": [0.613,0.482,0.847,0.868],
+    "focus_box_repnum": 3,
+    "reg_factor": 1,
+    "strides": [1],
+    "input_tile_shuffle": true,
+    "global_mask_enhance": { "erode": [3, 1], "dilate": [5, 2] },
+    "rmstill_frame_enable": true,
+    "rmstill_bin_threshold": 10,
+    "rmstill_rate_range": [0.05, 1.0],
+    "rmstill_area_mode": 1,
+    "rmstill_white_rate": 0.1
+}
+```
+
+```
 3级，4级1次外踏杆冲孔_新版
 {
     "focus_box": [0.479,0.658,0.638,0.860],
@@ -125,7 +144,7 @@
 }
 
 {
-    "focus_box": [0.466,0.576,0.640,0.895],
+    "focus_box": [0.516,0.614,0.592,0.865 ],
     "focus_box_repnum": 3,
     "reg_factor": 1,
     "strides": [1],
@@ -134,6 +153,9 @@
     "rmstill_bin_threshold": 10,
     "rmstill_rate_range": [0.02, 1.0],
     "rmstill_area_mode": 0,
+    "tsm_last_enable": true,
+    "tsm_last_threshold": 0.4,
+    "tsm_last_smooth": true,
     "rmstill_white_rate": 0.1
 }
 ```

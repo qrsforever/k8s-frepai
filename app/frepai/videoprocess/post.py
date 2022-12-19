@@ -296,6 +296,11 @@ def _post_stdwave(pigeon, args, progress_cb):# {{{
         if not cap.isOpened():
             raise HandlerError(83011, f'open video [{video_path}] err!')
 
+        brightvals, BV = [], -1
+        if os.path.exists(f'{cache_path}/brightvals.npy'):
+            brightvals = np.load(f'{cache_path}/brightvals.npy')
+            BV = np.mean(brightvals)
+
         fps = round(cap.get(cv2.CAP_PROP_FPS))
         cnt = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -399,6 +404,14 @@ def _post_stdwave(pigeon, args, progress_cb):# {{{
                     cv2.FONT_HERSHEY_SIMPLEX,
                     fontscale,
                     (255, 0, 0), 2)
+
+            if BV > 0:
+                cv2.putText(frame,
+                        '%d,%d' % (brightvals[cap_index], BV),
+                        (2, 90),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        fontscale,
+                        (255, 0, 0), 2)
             frames.append(frame)
         cap.release()
 
@@ -759,7 +772,7 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
         osd, osd_size, alpha = 0, int(width * 0.25), 0.5
         osd_blend, hist_blend = None, None
         keepframe = np.load(f'{cache_path}/keepframe.npz')['x']
-        binframes, binpoints, contareas, colorvals = [], [], [], []
+        binframes, binpoints, contareas, colorvals, brightvals, BV = [], [], [], [], [], -1
         if os.path.exists(f'{cache_path}/binframes.npz'):
             binframes = np.load(f'{cache_path}/binframes.npz')['x']
         if os.path.exists(f'{cache_path}/colorvals.npy'):
@@ -767,6 +780,9 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
             colorvals = np.load(f'{cache_path}/colorvals.npy')
         if os.path.exists(f'{cache_path}/contareas.npy'):
             contareas = np.load(f'{cache_path}/contareas.npy')
+        if os.path.exists(f'{cache_path}/brightvals.npy'):
+            brightvals = np.load(f'{cache_path}/brightvals.npy')
+            BV = np.mean(brightvals)
         if os.path.exists(f'{cache_path}/binpoints.npy'):
             binpoints = np.load(f'{cache_path}/binpoints.npy')
         if len(binpoints) > 0:
@@ -885,6 +901,14 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.7 if height < 500 else 2,
                     (255, 255, 255), 2)
+
+            if BV > 0:
+                cv2.putText(frame_bgr,
+                        '%d,%d' % (brightvals[idx], BV),
+                        (25, height - INPUT_HEIGHT - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.7,
+                        (255, 0, 0), 2)
 
             if idx % 181 == 0:
                 progress_cb(82 * float(idx) / all_frames_count)
