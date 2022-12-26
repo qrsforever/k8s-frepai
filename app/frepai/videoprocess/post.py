@@ -644,7 +644,8 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
     with open(f'{cache_path}/engine.pkl', 'rb') as r:
         engine = pickle.load(r)
 
-    all_frames_count = pigeon['frame_count']
+    grap_step = pigeon['global_grap_step'] 
+    all_frames_count = pigeon['frame_count'] if grap_step < 0 else pigeon['frame_count_lite']
     valid_frames_count = len(keepidxes)
     still_frames_count = all_frames_count - valid_frames_count
 
@@ -678,26 +679,18 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
     json_result['score'] = engine['pred_score']
     json_result['stride'] = engine['chosen_stride']
     json_result['fps'] = 1
-    json_result['num_frames'] = all_frames_count
+    json_result['num_frames'] = pigeon['frame_count'] 
     frames_info = []
     spf = 1 / pigeon['frame_rate']
-    for i, (in_period, p_count, is_still) in enumerate(zip(within_period, per_frame_counts, is_still_frames)):
+    for i, sc in enumerate(sum_counts if grap_step < 0 else np.repeat(sum_counts, grap_step, axis=0)):
         if i % pigeon['frame_rate'] == 0:
             frames_info.append({
-                'image_id': '%d.jpg' % i,
                 'at_time': round((i + 1) * spf, 3),
-                'is_still': is_still,
-                'within_period': in_period,
-                'pframe_counts': p_count,
-                'cum_counts': sum_counts[i]
+                'cum_counts': sc
             })
     else:
         frames_info.append({
-            'image_id': '%d.jpg' % i,
             'at_time': round((i + 1) * spf, 3),
-            'is_still': is_still,
-            'within_period': in_period,
-            'pframe_counts': p_count,
             'cum_counts': pigeon['sumcnt']
         })
     json_result['frames_period'] = frames_info

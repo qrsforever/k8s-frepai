@@ -348,7 +348,6 @@ def video_preprocess(args, progress_cb=None):
     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
     if global_grap_step > 0:
-        resdata['global_grap_step'] = global_grap_step
         s, video_path = 0, f'{cache_path}/source_lite.mp4'
         lite_writer = cv2.VideoWriter(video_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
         while True:
@@ -369,7 +368,10 @@ def video_preprocess(args, progress_cb=None):
 
     logger.info(f'width[{width} vs {w}] height[{height} vs {h}] framerate[{fps}] count[{all_cnt} vs {cnt}]')
 
+    resdata['global_grap_step'] = global_grap_step
     resdata['video_path'] = video_path
+    resdata['frame_count'] = all_cnt
+    resdata['frame_count_lite'] = cnt
 
     # global_bg_frame_ = [None, None]{{{
     # global_bg_window = args.get('global_bg_window', 0)
@@ -871,7 +873,6 @@ def video_preprocess(args, progress_cb=None):
     resdata['upload_files'].append('config.json')
     resdata['cache_path'] = cache_path
     resdata['coss3_path'] = coss3_path
-    resdata['frame_count'] = all_cnt
     resdata['frame_rate'] = fps
     _send_progress(100)
     logger.info('preprocess end')
