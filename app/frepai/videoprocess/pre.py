@@ -583,7 +583,7 @@ def video_preprocess(args, progress_cb=None):
 # }}}
     tile_shuffle = args.get('input_tile_shuffle', False)
 
-    brightvals, stdwave, diffimpulse, featpeak, direction = [], [], [], [], []
+    brightvals, featdata, diffimpulse, featpeak = [], [], [], []
     keepframe, keepidxes, half_focus_width = [], [], -1
     if devmode:
         binframes, binpoints, contareas, colorvals, waverates = [], [], [], [], []
@@ -687,8 +687,9 @@ def video_preprocess(args, progress_cb=None):
 
             if color_lower_value < val < color_upper_value:
                 keep_flag = True
+                featdata.append(round(colorval / area, 3))
                 if devmode:
-                    colorvals.append([colorval , val])
+                    colorvals.append([colorval, val])
                     frame_tmp = cv2.cvtColor(color_mask, cv2.COLOR_GRAY2RGB)
                     binframes.append(cv2.resize(frame_tmp, (INPUT_WIDTH, INPUT_HEIGHT)))
 # }}}
@@ -715,17 +716,7 @@ def video_preprocess(args, progress_cb=None):
                     feat = 0
             if devmode:
                 waverates.append(rate_)
-            stdwave.append(feat)
-
-            if debug_write_video: # debug
-                if len(stdwave) < 500:
-                    writer.write(frame_raw)
-                if len(stdwave) == 500:
-                    logger.info(f'{frame_bgr.shape} {frame_raw.shape}')
-                    writer.release()
-                    logger.info(f'{np.array(stdwave, np.int16)}')
-                    os.system(f'ffmpeg -an -i {cache_path}/_pre_video.mp4 {ffmpeg_args} {cache_path}/pre-video.mp4 2>/dev/null')
-                    resdata['upload_files'].append('pre-video.mp4')
+            featdata.append(feat)
 # }}}
         elif args.featpeak_tracker_enbale:# {{{
             frame_tmp = cv2.absdiff(frame_gray, pre_frame_gray)
@@ -744,7 +735,7 @@ def video_preprocess(args, progress_cb=None):
             lfeat = _calc_feat(data[:half_focus_width])
             rfeat = _calc_feat(data[half_focus_width:])
             mfeat = abs(lfeat - rfeat)
-            direction.append([mfeat if mfeat != 0 else 0.01, lfeat, rfeat])
+            featdata.append([mfeat if mfeat != 0 else 0.01, lfeat, rfeat])
             if debug_write_video:
                 if global_remove_shadow is not None:
                     frame_raw[focus_y1:focus_y2, focus_x1:focus_x2, :] = frame_bgr
@@ -806,24 +797,31 @@ def video_preprocess(args, progress_cb=None):
             return None
 
     if args.stdwave_tracker_enable:
-        stdwave = np.asarray(stdwave)
-        if len(stdwave[stdwave > global_feature_minval]) < global_feature_minnum:
+        featdata = np.asarray(featdata)
+        if len(featdata[featdata > global_feature_minval]) < global_feature_minnum:
             logger.warning(f'global_feature_minval: {global_feature_minval}, {global_feature_minnum}')
             _send_progress(100, True)
             rmdir_p(os.path.dirname(cache_path))
             return None
-        np.save(f'{cache_path}/stdwave_data.npy', stdwave)
+        np.save(f'{cache_path}/stdwave_data.npy', featdata)
         if devmode:
             np.save(f'{cache_path}/stdwave_rates.npy', waverates)
         # resdata['upload_files'].append('stdwave_data.npy')
+    elif args.color_tracker_enable:
+        featdata = np.asarray(featdata)
+        if len(featdata[featdata > global_feature_minval]) < global_feature_minnum:
+            logger.warning(f'global_feature_minval: {global_feature_minval}, {global_feature_minnum}')
+            _send_progress(100, True)
+            rmdir_p(os.path.dirname(cache_path))
+            return None
     elif args.direction_tracker_enable:
-        direction = np.asarray(direction)
-        features = direction[:, 0]
+        featdata = np.asarray(featdata)
+        features = featdata[:, 0]
         if len(features[features > global_feature_minval]) < global_feature_minnum:
             _send_progress(100, True)
             rmdir_p(os.path.dirname(cache_path))
             return None
-        np.save(f'/data/direction_data.npy', direction)
+        np.save(f'/data/direction_data.npy', featdata)
         if debug_write_video:
             writer.release()
             os.system(f'ffmpeg -an -i {cache_path}/_pre_video.mp4 {ffmpeg_args} /data/pre-video.mp4 2>/dev/null')
