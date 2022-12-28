@@ -644,8 +644,9 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
     with open(f'{cache_path}/engine.pkl', 'rb') as r:
         engine = pickle.load(r)
 
-    grap_step = pigeon['global_grap_step'] 
-    all_frames_count = pigeon['frame_count'] if grap_step < 0 else pigeon['frame_count_lite']
+    grap_step = pigeon['global_grap_step']
+    fill_frame_count = pigeon.get('fill_frame_count', 0)
+    all_frames_count = pigeon['frame_count'] + fill_frame_count
     valid_frames_count = len(keepidxes)
     still_frames_count = all_frames_count - valid_frames_count
 
@@ -655,7 +656,7 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
 
     i, j = 0, 0
     for k in range(all_frames_count):
-        if i < valid_frames_count and k == keepidxes[i]:
+        if i < valid_frames_count and k >= keepidxes[i]:
             final_within_period[k] = engine['within_period'][i]
             final_per_frame_counts[k] = engine['per_frame_counts'][i]
             i += 1
@@ -667,9 +668,13 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
 
     within_period = final_within_period
     per_frame_counts = np.asarray(final_per_frame_counts, dtype=np.float)
-    if args.reg_factor:
+    sum_counts_dev = np.cumsum(per_frame_counts)
+    if args.reg_factor == 1:
+        sum_counts = sum_counts_dev
+    else:
         per_frame_counts = args.reg_factor * per_frame_counts
-    sum_counts = np.cumsum(per_frame_counts)
+        sum_counts = np.cumsum(args.reg_factor * per_frame_counts)
+    logger.info(f'count: {sum_counts[-1]} vs {np.sum(engine["per_frame_counts"])}')
     real_val = round(float(sum_counts[-1]), 2)
     int_val = int(sum_counts[-1])
     pigeon['sumcnt'] = int_val if real_val - int_val < 0.1 else int_val + 1
@@ -679,7 +684,7 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
     json_result['score'] = engine['pred_score']
     json_result['stride'] = engine['chosen_stride']
     json_result['fps'] = 1
-    json_result['num_frames'] = pigeon['frame_count'] 
+    json_result['num_frames'] = all_frames_count
     frames_info = []
     spf = 1 / pigeon['frame_rate']
     for i, sc in enumerate(sum_counts if grap_step < 0 else np.repeat(sum_counts, grap_step, axis=0)):
@@ -765,7 +770,7 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
         osd, osd_size, alpha = 0, int(width * 0.25), 0.5
         osd_blend, hist_blend = None, None
         keepframe = np.load(f'{cache_path}/keepframe.npz')['x']
-        binframes, binpoints, contareas, colorvals, brightvals, BV = [], [], [], [], [], -1
+        binframes, binpoints, contareas, colorvals, brightvals, fillidxes, BV = [], [], [], [], [], [], -1
         if os.path.exists(f'{cache_path}/binframes.npz'):
             binframes = np.load(f'{cache_path}/binframes.npz')['x']
         if os.path.exists(f'{cache_path}/colorvals.npy'):
@@ -786,6 +791,8 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
                     (int(0.1 * INPUT_WIDTH), int(0.5 * INPUT_HEIGHT)),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7,
                     (0, 0, 0), 2)
+        if fill_frame_count > 0:
+            fillidxes = np.load(f'{cache_path}/fillidxes.npy').tolist()
 
         chosen_stride = engine['chosen_stride']
         avg_embs_score = engine['avg_embs_score']
@@ -793,9 +800,18 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
         grap_speed = args.get('global_grap_speed', -1)
 
         while True:
-            success, frame_bgr = cap.read()
-            if not success:
-                break
+            if len(fillidxes) > 0:
+                if idx >= fillidxes[0]:
+                    fillidxes.pop(0)
+                else:
+                    success, frame_raw = cap.read()
+                    if not success:
+                        break
+                frame_bgr = frame_raw.copy()
+            else:
+                success, frame_bgr = cap.read()
+                if not success:
+                    break
             if black_box is not None:
                 if args.black_overlay:
                     frame_bgr[by1:by2, bx1:bx2, :] = 0
@@ -834,7 +850,7 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
                 logger.error(traceback.format_exc(limit=6))
             cv2.putText(frame_bgr,
                     '%d %.1f S:%d C:%.1f/%.1f %s %s %s %s' % (width,
-                        fps, chosen_stride, sum_counts[idx], sum_counts[-1],
+                        fps, chosen_stride, sum_counts_dev[idx], sum_counts_dev[-1],
                         'L:%.2f' % args.tsm_last_threshold if args.tsm_last_enable else '',
                         'V:%d' % grap_speed if grap_speed > 0 else '',
                         'P:%.2f' % within_period[idx],

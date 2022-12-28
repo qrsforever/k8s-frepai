@@ -64,6 +64,7 @@ upper_gray = np.array([180, 43, 220])
 
 INPUT_WIDTH = 112
 INPUT_HEIGHT = 112
+NUM_FRAMES = 64
 SMALL_AREA_THRESH = 150 * 150
 MIN_AREA_THRESH = 8 * 8
 
@@ -274,6 +275,7 @@ def video_preprocess(args, progress_cb=None):
         global_grap_step = int(fps * args.get('global_grap_interval', -1))
     global_blur_type = args.get('global_blur_type', 'none')
     global_filter_kernel = args.get('global_filter_kernel', 3)
+    global_repnet_smooth = args.get('global_repnet_smooth', False)
     global_lowest_bright = args.get('global_lowest_bright', None)
     global_feature_select = args.get('global_feature_select', 'mean')
     global_feature_minval = args.get('global_feature_minval', 10)
@@ -370,8 +372,8 @@ def video_preprocess(args, progress_cb=None):
 
     resdata['global_grap_step'] = global_grap_step
     resdata['video_path'] = video_path
-    resdata['frame_count'] = all_cnt
-    resdata['frame_count_lite'] = cnt
+    resdata['frame_count'] = cnt
+    resdata['frame_count_all'] = all_cnt
 
     # global_bg_frame_ = [None, None]{{{
     # global_bg_window = args.get('global_bg_window', 0)
@@ -806,8 +808,7 @@ def video_preprocess(args, progress_cb=None):
         np.save(f'{cache_path}/stdwave_data.npy', featdata)
         if devmode:
             np.save(f'{cache_path}/stdwave_rates.npy', waverates)
-        # resdata['upload_files'].append('stdwave_data.npy')
-    elif args.color_tracker_enable:
+    elif args.color_tracker_enable and global_feature_minval < 0:
         featdata = np.asarray(featdata)
         if len(featdata[featdata > global_feature_minval]) < global_feature_minnum:
             logger.warning(f'global_feature_minval: {global_feature_minval}, {global_feature_minnum}')
@@ -849,21 +850,49 @@ def video_preprocess(args, progress_cb=None):
             rmdir_p(os.path.dirname(cache_path))
             return None
 
-    if len(keepframe) > 0:
-        np.savez_compressed(f'{cache_path}/keepframe.npz', x=np.asarray(keepframe))
-        np.save(f'{cache_path}/keepidxes.npy', np.asarray(keepidxes))
+    keep_frame_count, fill_frame_count, fill_frame_idxes = len(keepframe), 0, None
+    if keep_frame_count > 0:
+        keepframes, keepidxes = np.asarray(keepframe), np.asarray(keepidxes)
+        if global_repnet_smooth:
+            fill_frame_count = NUM_FRAMES - keep_frame_count % NUM_FRAMES
+            if fill_frame_count > 10:
+                fill_frame_step = int(keep_frame_count / fill_frame_count)
+                fill_frame_idxes = np.arange(fill_frame_step, keep_frame_count, fill_frame_step)
+                fill_frame_idxes = fill_frame_idxes[:fill_frame_count]
+                keepidxes = np.insert(keepidxes, fill_frame_idxes, keepidxes[fill_frame_idxes])
+                keepframes = np.insert(keepframes, fill_frame_idxes, keepframes[fill_frame_idxes], axis=0)
+                resdata['fill_frame_count'] = len(fill_frame_idxes)
+                logger.info(f'frames: {keep_frame_count} {fill_frame_count}')
+                np.save(f'{cache_path}/fillidxes.npy', fill_frame_idxes)
+        np.savez_compressed(f'{cache_path}/keepframe.npz', x=keepframes)
+        np.save(f'{cache_path}/keepidxes.npy', keepidxes)
 
     if devmode:
         if len(brightvals) > 0:
-            np.save(f'{cache_path}/brightvals.npy', np.asarray(brightvals))
+            brightvals = np.asarray(brightvals)
+            if fill_frame_idxes is not None:
+                brightvals = np.insert(brightvals, fill_frame_idxes, brightvals[fill_frame_idxes])
+            np.save(f'{cache_path}/brightvals.npy', brightvals)
         if len(binpoints) > 0:
-            np.save(f'{cache_path}/binpoints.npy', np.asarray(binpoints))
+            binpoints = np.asarray(binpoints)
+            if fill_frame_idxes is not None:
+                binpoints = np.insert(binpoints, fill_frame_idxes, binpoints[fill_frame_idxes])
+            np.save(f'{cache_path}/binpoints.npy', binpoints)
         if len(binframes) > 0:
-            np.savez_compressed(f'{cache_path}/binframes.npz', x=np.asarray(binframes))
+            binframes = np.asarray(binframes)
+            if fill_frame_idxes is not None:
+                binframes = np.insert(binframes, fill_frame_idxes, binframes[fill_frame_idxes], axis=0)
+            np.savez_compressed(f'{cache_path}/binframes.npz', x=binframes)
         if len(contareas) > 0:
-            np.save(f'{cache_path}/contareas.npy', np.asarray(contareas))
+            contareas = np.asarray(contareas)
+            if fill_frame_idxes is not None:
+                contareas = np.insert(contareas, fill_frame_idxes, contareas[fill_frame_idxes])
+            np.save(f'{cache_path}/contareas.npy', contareas)
         if len(colorvals) > 0:
-            np.save(f'{cache_path}/colorvals.npy', np.asarray(colorvals))
+            colorvals = np.asarray(colorvals)
+            if fill_frame_idxes is not None:
+                colorvals = np.insert(colorvals, fill_frame_idxes, colorvals[fill_frame_idxes])
+            np.save(f'{cache_path}/colorvals.npy', colorvals)
 
     with open(f'{cache_path}/config.json', 'w') as f:
         f.write(json.dumps(dict(args)))

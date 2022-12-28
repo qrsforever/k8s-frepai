@@ -84,7 +84,7 @@ def get_counts(model, frames, strides, batch_size,
                tsm_last_smooth=False,
                constant_speed=False,
                median_filter=True,
-               osd_feat=False, pcaks=None, progress_cb=None):
+               osd_feat=False, pcaks=None, progress_cb=None, devmode=False, logger=None):
     """Pass frames through model and conver period predictions to count."""
     seq_len = len(frames)
     raw_scores_list = []
@@ -189,21 +189,23 @@ def get_counts(model, frames, strides, batch_size,
     final_embs = embs_list[argmax_strides]
 
     # QRS
-    avg_embs_score = []
     within_period_scores = within_period_scores_list[argmax_strides]
-    for i in range(0, len(within_period_scores) - model.num_frames, model.num_frames):
-        embs_scores = within_period_scores[i:i + model.num_frames]
-        mscore = np.mean(embs_scores)
-        if mscore < avg_pred_score:
-            within_period_scores[i:i + model.num_frames] = (1 + mscore - avg_pred_score) * embs_scores 
-        avg_embs_score.append(mscore)
-    else:
-        j = model.num_frames if tsm_last_smooth else int(seq_len / chosen_stride) % model.num_frames
-        embs_scores = within_period_scores[i:i + j]
-        mscore = np.mean(embs_scores)
-        if mscore < avg_pred_score:
-            within_period_scores[i:i + j] = (1 + mscore - avg_pred_score) * embs_scores 
-        avg_embs_score.append(mscore)
+    avg_embs_score = []
+    if devmode:
+        for i in range(0, len(within_period_scores), model.num_frames):
+            embs_scores = within_period_scores[i:i + model.num_frames]
+            mscore = np.mean(embs_scores)
+            if mscore < avg_pred_score:
+                within_period_scores[i:i + model.num_frames] = (1 + mscore - avg_pred_score) * embs_scores 
+            avg_embs_score.append(mscore)
+        else:
+            j = model.num_frames if tsm_last_smooth else int(seq_len / chosen_stride) % model.num_frames
+            logger.info(f'avg embs: {seq_len} {len(within_period_scores)} {i} {j}')
+            embs_scores = within_period_scores[i:i + j]
+            mscore = np.mean(embs_scores)
+            if mscore < avg_pred_score:
+                within_period_scores[i:i + j] = (1 + mscore - avg_pred_score) * embs_scores 
+            avg_embs_score.append(mscore)
 
     feat_factors = []
     if pcaks:

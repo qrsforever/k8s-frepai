@@ -15,6 +15,7 @@
     "focus_box_repnum": 0,
     "angle": 0,
     "reg_factor": 1,
+    "global_repnet_smooth": false,
     "global_bg_finding": false,
     "global_grap_interval": -1,
     "global_grap_speed": -1,

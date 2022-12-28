@@ -472,6 +472,7 @@ def engine_process(pigeon, progress_cb=None):# {{{
 
     frames = np.load(f'{cache_path}/keepframe.npz')['x']
 
+    devmode = pigeon['devmode']
     tsm_last_thresh, tsm_last_smooth = 0.5, False
     if args.tsm_last_enable:
         tsm_last_thresh = args.tsm_last_threshold
@@ -498,7 +499,7 @@ def engine_process(pigeon, progress_cb=None):# {{{
             strides=args.strides, batch_size=args.batch_size,
             tsm_last_thresh=tsm_last_thresh,
             tsm_last_smooth=tsm_last_smooth,
-            pcaks=pcaks, progress_cb=_send_progress)
+            pcaks=pcaks, progress_cb=_send_progress, devmode=devmode, logger=logger)
     logger.info('model inference time: %.3f' % (time.time() - t0))
 
     with open(f'{cache_path}/engine.pkl', 'wb') as fw:
