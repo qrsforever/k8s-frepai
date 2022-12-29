@@ -656,7 +656,7 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
 
     i, j = 0, 0
     for k in range(all_frames_count):
-        if i < valid_frames_count and k >= keepidxes[i]:
+        if i < valid_frames_count and k == keepidxes[i]:
             final_within_period[k] = engine['within_period'][i]
             final_per_frame_counts[k] = engine['per_frame_counts'][i]
             i += 1
@@ -696,7 +696,7 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
     else:
         frames_info.append({
             'at_time': round((i + 1) * spf, 3),
-            'cum_counts': pigeon['sumcnt']
+            'cum_counts': np.sum(engine['per_frame_counts'])
         })
     json_result['frames_period'] = frames_info
 
@@ -735,7 +735,10 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
                 fx1, fy1, fx2, fy2 = focus_box
                 area = (fy2 - fy1) * (fx2 - fx1)
             pigeon['upload_files'].append('embs_feat.npy')
+            # pigeon['upload_files'].append('embs_sims.npy')
+            # pigeon['embs_sims'] = f'{coss3_domain}{coss3_path}/embs_sims.npy'
             pigeon['embs_feat'] = f'{coss3_domain}{coss3_path}/embs_feat.npy'
+            pigeon['embs_sims'] = 'noused'
         else:
             black_box = None
             focus_box = None
@@ -798,7 +801,6 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
         avg_embs_score = engine['avg_embs_score']
         feat_factors = engine['feat_factors']
         grap_speed = args.get('global_grap_speed', -1)
-
         while True:
             if len(fillidxes) > 0:
                 if idx >= fillidxes[0]:
@@ -849,12 +851,11 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
             except Exception:
                 logger.error(traceback.format_exc(limit=6))
             cv2.putText(frame_bgr,
-                    '%d %.1f S:%d C:%.1f/%.1f %s %s %s %s' % (width,
-                        fps, chosen_stride, sum_counts_dev[idx], sum_counts_dev[-1],
+                    '%d %.1f S:%d C:%.1f/%.1f %d %s %s %s' % (width,
+                        fps, chosen_stride, sum_counts_dev[idx], sum_counts_dev[-1], fill_frame_count,
                         'L:%.2f' % args.tsm_last_threshold if args.tsm_last_enable else '',
                         'V:%d' % grap_speed if grap_speed > 0 else '',
-                        'P:%.2f' % within_period[idx],
-                        'ST' if is_still_frames[idx] else ''),
+                        'P:%.2f' % within_period[idx]),
                     (2, int(0.06 * height)),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.7 if height < 500 else 2,

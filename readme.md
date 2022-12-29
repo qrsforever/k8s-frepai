@@ -42,6 +42,11 @@
     "rmstill_area_mode": 0,
     "rmstill_white_rate": 0.1,
     "rmstill_white_window": 10,
+    "ef_is_send": false,
+    "ef_url": "",
+    "ef_alpha": 0.01,
+    "ef_beta": 0.7,
+    "ef_gamma": 0.8,
     "strides": [1, 2],
     "avg_pred_score": 0.2,
     "input_tile_shuffle": false,
@@ -499,4 +504,22 @@
     "stdwave_minstd_thresh": 3.5
 }
 
+```
+
+```
+{
+    "focus_box": [0.364,0.646,0.482,0.841],
+    "focus_box_repnum": 3,
+    "reg_factor": 1,
+    "strides": [1],
+    "global_bg_finding":false,
+    "rmstill_frame_enable": true,
+    "rmstill_bin_threshold": 10,
+    "rmstill_rate_range": [0.1, 1.0],
+    "rmstill_area_mode": 0,
+    "within_period_threshold": 0.5,
+    "tsm_last_enable": true,
+    "tsm_last_threshold": 0.4,
+    "tsm_last_smooth": true
+}
 ```

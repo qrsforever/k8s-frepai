@@ -130,8 +130,10 @@ def _pre_kstest(args, resdata, progress_cb):
     with open(kstest_ecdfs_path, 'wb') as fw:
         pickle.dump(pcaks, fw)
 
-    resdata['kstest_coss3_path'] = os.path.join('/', *args.resdata['out_path'][8:].split('/')[1:])
+    out_path = args.pigeon['out_path']
+    resdata['kstest_coss3_path'] = os.path.join('/', *out_path[8:].split('/')[1:])
     resdata['kstest_ecdfs_path'] = kstest_ecdfs_path
+    resdata['pcaks'] = out_path
     progress_cb(100)
     return resdata
 
@@ -185,7 +187,7 @@ def video_preprocess(args, progress_cb=None):
     video_path = args.video
     logger.info(f'from: {video_path}')
 
-    if 'https://' in video_path:
+    if video_path is not None and 'https://' in video_path:
         segs = video_path[8:].split('/')
         vname = segs[-1].split('.')[0]
         coss3_path = os.path.join('/', *segs[1:3], 'outputs', vname, 'repnet_tf')
@@ -197,6 +199,7 @@ def video_preprocess(args, progress_cb=None):
     cache_path = f'/data/cache/{int(time.time() * 1000)}/{vname}'
     mkdir_p(cache_path)
     resdata['cache_path'] = cache_path
+    resdata['coss3_path'] = ''
 
     if 'pcaks' in args:
         return _pre_kstest(args, resdata, _send_progress)
@@ -859,11 +862,13 @@ def video_preprocess(args, progress_cb=None):
                 fill_frame_step = int(keep_frame_count / fill_frame_count)
                 fill_frame_idxes = np.arange(fill_frame_step, keep_frame_count, fill_frame_step)
                 fill_frame_idxes = fill_frame_idxes[:fill_frame_count]
-                keepidxes = np.insert(keepidxes, fill_frame_idxes, keepidxes[fill_frame_idxes])
+                fill_diff_idxes = np.diff([0] + fill_frame_idxes.tolist() + [keep_frame_count])
+                keepidxes = keepidxes + np.hstack([[i] * j for i, j in enumerate(fill_diff_idxes)])
+                keepidxes = np.insert(keepidxes, fill_frame_idxes, keepidxes[fill_frame_idxes] - 1)
                 keepframes = np.insert(keepframes, fill_frame_idxes, keepframes[fill_frame_idxes], axis=0)
                 resdata['fill_frame_count'] = len(fill_frame_idxes)
                 logger.info(f'frames: {keep_frame_count} {fill_frame_count}')
-                np.save(f'{cache_path}/fillidxes.npy', fill_frame_idxes)
+                np.save(f'{cache_path}/fillidxes.npy', fill_frame_idxes + np.arange(0, len(fill_frame_idxes)))
         np.savez_compressed(f'{cache_path}/keepframe.npz', x=keepframes)
         np.save(f'{cache_path}/keepidxes.npy', keepidxes)
 
