@@ -39,6 +39,7 @@
     "rmstill_bin_threshold": 20,
     "rmstill_rate_range": [0.01, 0.8],
     "rmstill_brightness_norm": false,
+    "rmstill_sort_brightness": false,
     "rmstill_area_mode": 0,
     "rmstill_white_rate": 0.1,
     "rmstill_white_window": 10,
