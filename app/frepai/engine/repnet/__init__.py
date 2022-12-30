@@ -191,21 +191,20 @@ def get_counts(model, frames, strides, batch_size,
     # QRS
     within_period_scores = within_period_scores_list[argmax_strides]
     avg_embs_score = []
-    if devmode:
-        for i in range(0, len(within_period_scores), model.num_frames):
-            embs_scores = within_period_scores[i:i + model.num_frames]
-            mscore = np.mean(embs_scores)
-            if mscore < avg_pred_score:
-                within_period_scores[i:i + model.num_frames] = (1 + mscore - avg_pred_score) * embs_scores 
-            avg_embs_score.append(mscore)
-        else:
-            j = model.num_frames if tsm_last_smooth else int(seq_len / chosen_stride) % model.num_frames
-            logger.info(f'avg embs: {seq_len} {len(within_period_scores)} {i} {j}')
-            embs_scores = within_period_scores[i:i + j]
-            mscore = np.mean(embs_scores)
-            if mscore < avg_pred_score:
-                within_period_scores[i:i + j] = (1 + mscore - avg_pred_score) * embs_scores 
-            avg_embs_score.append(mscore)
+    for i in range(0, len(within_period_scores), model.num_frames):
+        embs_scores = within_period_scores[i:i + model.num_frames]
+        mscore = np.mean(embs_scores)
+        # penalty
+        if mscore < avg_pred_score:
+            within_period_scores[i:i + model.num_frames] = (1 + mscore - avg_pred_score) * embs_scores 
+        avg_embs_score.append(mscore)
+    else:
+        j = model.num_frames if tsm_last_smooth else int(seq_len / chosen_stride) % model.num_frames
+        embs_scores = within_period_scores[i:i + j]
+        mscore = np.mean(embs_scores)
+        if mscore < avg_pred_score:
+            within_period_scores[i:i + j] = (1 + mscore - avg_pred_score) * embs_scores 
+        avg_embs_score.append(mscore)
 
     feat_factors = []
     if pcaks:

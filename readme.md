@@ -505,21 +505,3 @@
 }
 
 ```
-
-```
-{
-    "focus_box": [0.364,0.646,0.482,0.841],
-    "focus_box_repnum": 3,
-    "reg_factor": 1,
-    "strides": [1],
-    "global_bg_finding":false,
-    "rmstill_frame_enable": true,
-    "rmstill_bin_threshold": 10,
-    "rmstill_rate_range": [0.1, 1.0],
-    "rmstill_area_mode": 0,
-    "within_period_threshold": 0.5,
-    "tsm_last_enable": true,
-    "tsm_last_threshold": 0.4,
-    "tsm_last_smooth": true
-}
-```

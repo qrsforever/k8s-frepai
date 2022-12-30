@@ -674,7 +674,8 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
     else:
         per_frame_counts = args.reg_factor * per_frame_counts
         sum_counts = np.cumsum(args.reg_factor * per_frame_counts)
-    logger.info(f'count: {sum_counts[-1]} vs {np.sum(engine["per_frame_counts"])}')
+    sum_counts = np.round(sum_counts, 3)
+    logger.info(f'count: {sum_counts[-1]:.2} vs {np.sum(engine["per_frame_counts"]):.2}')
     real_val = round(float(sum_counts[-1]), 2)
     int_val = int(sum_counts[-1])
     pigeon['sumcnt'] = int_val if real_val - int_val < 0.1 else int_val + 1
@@ -696,7 +697,7 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
     else:
         frames_info.append({
             'at_time': round((i + 1) * spf, 3),
-            'cum_counts': np.sum(engine['per_frame_counts'])
+            'cum_counts': sum_counts[-1]
         })
     json_result['frames_period'] = frames_info
 
@@ -756,10 +757,9 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
         )
 
         if args['rmstill_frame_enable']:
-            bottom_text += '%s %s %s' % (
-                'A:%.3f,%.3f' % (args['rmstill_rate_range'][0], args['rmstill_rate_range'][1]),
-                'B:%d' % args['rmstill_bin_threshold'],
-                'G:%.3f' % engine['pred_score']
+            bottom_text += '%s|%s' % (
+                '%.3f,%.3f' % (args['rmstill_rate_range'][0], args['rmstill_rate_range'][1]),
+                '%d' % args['rmstill_bin_threshold']
             )
         if args['color_tracker_enable']:
             bottom_text += ' %s|%s|%d|%d' % (
@@ -851,11 +851,12 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
             except Exception:
                 logger.error(traceback.format_exc(limit=6))
             cv2.putText(frame_bgr,
-                    '%d %.1f S:%d C:%.1f/%.1f %d %s %s %s' % (width,
-                        fps, chosen_stride, sum_counts_dev[idx], sum_counts_dev[-1], fill_frame_count,
+                    '%d %.1f %d %.1f/%.1f %s %s %s %s' % (width,
+                        fps, chosen_stride, sum_counts_dev[idx], sum_counts_dev[-1],
+                        '%d' % fill_frame_count if fill_frame_count > 0 else '',
                         'L:%.2f' % args.tsm_last_threshold if args.tsm_last_enable else '',
                         'V:%d' % grap_speed if grap_speed > 0 else '',
-                        'P:%.2f' % within_period[idx]),
+                        'P:%.2f/%.2f' % (within_period[idx], engine['pred_score'])),
                     (2, int(0.06 * height)),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.7 if height < 500 else 2,
@@ -880,7 +881,7 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
                     if len(colorvals) > 0:
                         cv2.putText(frame_bgr,
                                 '%.2f %.2f' % (
-                                    round(colorvals[valid_idx][0] / area, 2),
+                                    round(colorvals[valid_idx][0], 2),
                                     round(colorvals[valid_idx][1] / args['color_buffer_size'], 2)),
                                 (6, th + int(0.4 * INPUT_HEIGHT)),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.7,
@@ -920,7 +921,7 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
                         0.7,
                         (255, 0, 0), 2)
 
-            if idx % 181 == 0:
+            if idx % 281 == 0:
                 progress_cb(82 * float(idx) / all_frames_count)
 
             if args.save_video:

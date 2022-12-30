@@ -694,7 +694,7 @@ def video_preprocess(args, progress_cb=None):
                 keep_flag = True
                 featdata.append(round(colorval / area, 3))
                 if devmode:
-                    colorvals.append([colorval, val])
+                    colorvals.append([featdata[-1], val])
                     frame_tmp = cv2.cvtColor(color_mask, cv2.COLOR_GRAY2RGB)
                     binframes.append(cv2.resize(frame_tmp, (INPUT_WIDTH, INPUT_HEIGHT)))
 # }}}
