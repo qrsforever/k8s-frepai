@@ -455,6 +455,7 @@ def video_preprocess(args, progress_cb=None):
         rmstill_brightness_norm = args.get('rmstill_brightness_norm', False)
         rmstill_area_mode = args.get('rmstill_area_mode', 0)
         rmstill_area_range = [math.ceil(rmstill_rate_range[0] * area), math.ceil(rmstill_rate_range[1] * area)]
+        rmstill_sort_brightness = args.get('rmstill_sort_brightness', False)
 
         if area < SMALL_AREA_THRESH:
             rmstill_white_thres = int(args.get('rmstill_white_rate', 0.1) * area)
@@ -765,6 +766,10 @@ def video_preprocess(args, progress_cb=None):
                 diffimpulse.append(0)
 # }}}
         if keep_flag:
+            if rmstill_sort_brightness:
+                sorted_idxes = np.argsort(frame_gray.ravel())[::-1]
+                sorted_frame = np.take_along_axis(frame_bgr.reshape((-1, 3)), sorted_idxes.reshape((-1, 1)), axis=0)
+                frame_bgr = sorted_frame.reshape(frame_bgr.shape)
             if focus_box is not None:
                 if args.focus_box_repnum > 1:
                     frame_bgr = np.hstack([frame_bgr] * args.focus_box_repnum)
