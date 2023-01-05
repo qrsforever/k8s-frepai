@@ -15,7 +15,6 @@
     "focus_box_repnum": 0,
     "angle": 0,
     "reg_factor": 1,
-    "global_repnet_smooth": false,
     "global_bg_finding": false,
     "global_grap_interval": -1,
     "global_grap_speed": -1,
@@ -31,18 +30,11 @@
 }
 ```
 
-### rmstill
+### rmstill & color
 
 ```json
 {
-    "rmstill_frame_enable": true,
-    "rmstill_bin_threshold": 20,
-    "rmstill_rate_range": [0.01, 0.8],
-    "rmstill_brightness_norm": false,
-    "rmstill_sort_brightness": false,
-    "rmstill_area_mode": 0,
-    "rmstill_white_rate": 0.1,
-    "rmstill_white_window": 10,
+    "sort_brightness": false,
     "ef_is_send": false,
     "ef_url": "",
     "ef_alpha": 0.01,
@@ -52,9 +44,22 @@
     "avg_pred_score": 0.2,
     "input_tile_shuffle": false,
     "within_period_threshold": 0.5,
-    "tsm_last_enable": false,
     "tsm_last_threshold": 0.5,
-    "tsm_last_smooth": false
+    "smooth_interpolate": false,
+}
+```
+
+### rmstill
+
+```json
+{
+    "rmstill_frame_enable": true,
+    "rmstill_bin_threshold": 20,
+    "rmstill_rate_range": [0.01, 0.8],
+    "rmstill_brightness_norm": false,
+    "rmstill_area_mode": 0,
+    "rmstill_white_rate": 0.1,
+    "rmstill_white_window": 10,
 }
 ```
 
@@ -66,9 +71,6 @@
 ```json
 {
     "color_tracker_enable": true,
-    "strides": [1, 2],
-    "avg_pred_score": 0.2,
-    "within_period_threshold": 0.5,
     "color_select": 8,
     "color_rate_range": [0.2, 0.9],
     "color_enhance_blur": 25,

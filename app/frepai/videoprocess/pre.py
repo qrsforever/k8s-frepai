@@ -278,7 +278,6 @@ def video_preprocess(args, progress_cb=None):
         global_grap_step = int(fps * args.get('global_grap_interval', -1))
     global_blur_type = args.get('global_blur_type', 'none')
     global_filter_kernel = args.get('global_filter_kernel', 3)
-    global_repnet_smooth = args.get('global_repnet_smooth', False)
     global_lowest_bright = args.get('global_lowest_bright', None)
     global_feature_select = args.get('global_feature_select', 'mean')
     global_feature_minval = args.get('global_feature_minval', 10)
@@ -443,6 +442,13 @@ def video_preprocess(args, progress_cb=None):
             hsv_range.append((lo, hi))
         return hsv_range# }}}
 
+    if args.rmstill_frame_enable or args.color_tracker_enable:# {{{
+        resdata['avg_pred_score'] = args.get('avg_pred_score', 0.2)
+        resdata['tsm_last_threshold'] = args.get('tsm_last_threshold', 0.5)
+        resdata['within_period_threshold'] = args.get('within_period_threshold', 0.5)
+        smooth_interpolate = args.get('smooth_interpolate', False)
+        sort_brightness = args.get('sort_brightness', False)# }}}
+
     if args.rmstill_frame_enable:# {{{
         rmstill_rate_range = args.get('rmstill_rate_range', None)
         if rmstill_rate_range is None:
@@ -455,7 +461,6 @@ def video_preprocess(args, progress_cb=None):
         rmstill_brightness_norm = args.get('rmstill_brightness_norm', False)
         rmstill_area_mode = args.get('rmstill_area_mode', 0)
         rmstill_area_range = [math.ceil(rmstill_rate_range[0] * area), math.ceil(rmstill_rate_range[1] * area)]
-        rmstill_sort_brightness = args.get('rmstill_sort_brightness', False)
 
         if area < SMALL_AREA_THRESH:
             rmstill_white_thres = int(args.get('rmstill_white_rate', 0.1) * area)
@@ -463,9 +468,6 @@ def video_preprocess(args, progress_cb=None):
             rmstill_white_buffer = np.zeros((rmstill_white_window, ))
             frames_invalid = True
         resdata['rmstill_area_range'] = rmstill_area_range
-        resdata['avg_pred_score'] = args.get('avg_pred_score', 0.2)
-        resdata['within_period_threshold'] = args.get('within_period_threshold', 0.5)
-
         logger.info(f'rmstill: ({area}, {rmstill_area_range}, {rmstill_bin_threshold})')
 # }}}
     elif args.color_tracker_enable:# {{{
@@ -530,8 +532,6 @@ def video_preprocess(args, progress_cb=None):
         color_upper_value = int(color_buffer_size * color_upper_rate)
         logger.info(f'color_tracker: ({color_area_range}, {color_lower_value}, {color_upper_value})')
         resdata['color_area_range'] = color_area_range
-        resdata['avg_pred_score'] = args.get('avg_pred_score', 0.2)
-        resdata['within_period_threshold'] = args.get('within_period_threshold', 0.5)
         resdata['color_lower_value'] = color_lower_value
         resdata['color_upper_value'] = color_upper_value
 # }}}
@@ -766,7 +766,7 @@ def video_preprocess(args, progress_cb=None):
                 diffimpulse.append(0)
 # }}}
         if keep_flag:
-            if rmstill_sort_brightness:
+            if sort_brightness:
                 sorted_idxes = np.argsort(frame_gray.ravel())[::-1]
                 sorted_frame = np.take_along_axis(frame_bgr.reshape((-1, 3)), sorted_idxes.reshape((-1, 1)), axis=0)
                 frame_bgr = sorted_frame.reshape(frame_bgr.shape)
@@ -859,21 +859,24 @@ def video_preprocess(args, progress_cb=None):
             return None
 
     keep_frame_count, fill_frame_count, fill_frame_idxes = len(keepframe), 0, None
-    if keep_frame_count > 0:
+    if keep_frame_count > NUM_FRAMES:
         keepframes, keepidxes = np.asarray(keepframe), np.asarray(keepidxes)
-        if global_repnet_smooth:
+        if smooth_interpolate:
             fill_frame_count = NUM_FRAMES - keep_frame_count % NUM_FRAMES
-            if fill_frame_count > 10:
+            if 1 < fill_frame_count < 20:
                 fill_frame_step = int(keep_frame_count / fill_frame_count)
-                fill_frame_idxes = np.arange(fill_frame_step, keep_frame_count, fill_frame_step)
+                fill_frame_idxes = np.arange(fill_frame_step - 1, keep_frame_count, fill_frame_step)
                 fill_frame_idxes = fill_frame_idxes[:fill_frame_count]
                 fill_diff_idxes = np.diff([0] + fill_frame_idxes.tolist() + [keep_frame_count])
                 keepidxes = keepidxes + np.hstack([[i] * j for i, j in enumerate(fill_diff_idxes)])
                 keepidxes = np.insert(keepidxes, fill_frame_idxes, keepidxes[fill_frame_idxes] - 1)
-                keepframes = np.insert(keepframes, fill_frame_idxes, keepframes[fill_frame_idxes], axis=0)
+                # keepframes = np.insert(keepframes, fill_frame_idxes, keepframes[fill_frame_idxes], axis=0)
+                keepframes = np.insert(
+                        keepframes, fill_frame_idxes,
+                        np.random.randint(1, 255, size=(fill_frame_count, *keepframes[0].shape)), axis=0)
                 resdata['fill_frame_count'] = len(fill_frame_idxes)
                 logger.info(f'frames: {keep_frame_count} {fill_frame_count}')
-                np.save(f'{cache_path}/fillidxes.npy', fill_frame_idxes + np.arange(0, len(fill_frame_idxes)))
+                np.save(f'{cache_path}/fillidxes.npy', fill_frame_idxes + np.arange(1, len(fill_frame_idxes) + 1))
         np.savez_compressed(f'{cache_path}/keepframe.npz', x=keepframes)
         np.save(f'{cache_path}/keepidxes.npy', keepidxes)
 
