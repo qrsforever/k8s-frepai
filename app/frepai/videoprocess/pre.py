@@ -75,10 +75,10 @@ def input_tile_shuffle(image):
     tiled_array = tiled_array.swapaxes(1, 2).reshape((-1, 28, 28, 3))
     tiled_array = np.take(tiled_array, indexes, axis=0)
     vs = []
-    vs.append(np.hstack([tiled_array[0], np.flip(tiled_array[1], axis=0), np.flip(tiled_array[2], axis=1), 255 - tiled_array[3]]))
-    vs.append(np.hstack([tiled_array[4], np.flip(tiled_array[5], axis=0), 255 - np.flip(tiled_array[6], axis=1), tiled_array[7]]))
-    vs.append(np.hstack([tiled_array[8], 255 - np.flip(tiled_array[9], axis=0), np.flip(tiled_array[10], axis=1), tiled_array[11]]))
-    vs.append(np.hstack([255 - tiled_array[12], np.flip(tiled_array[13], axis=0), np.flip(tiled_array[14], axis=1), tiled_array[15]]))
+    vs.append(np.hstack([255 - tiled_array[0], np.flip(tiled_array[1], axis=0), np.flip(tiled_array[2], axis=1), 255 - tiled_array[3]]))
+    vs.append(np.hstack([tiled_array[4], 255 - np.flip(tiled_array[5], axis=0), 255 - np.flip(tiled_array[6], axis=1), tiled_array[7]]))
+    vs.append(np.hstack([tiled_array[8], 255 - np.flip(tiled_array[9], axis=0), 255 - np.flip(tiled_array[10], axis=1), tiled_array[11]]))
+    vs.append(np.hstack([255 - tiled_array[12], np.flip(tiled_array[13], axis=0), np.flip(tiled_array[14], axis=1), 255 - tiled_array[15]]))
     # for i in range(4):
     #     vs.append(np.hstack(tiled_array[i * 4: (i + 1) * 4]))
     return np.vstack(vs)

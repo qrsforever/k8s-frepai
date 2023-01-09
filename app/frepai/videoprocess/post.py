@@ -85,7 +85,7 @@ def _post_featpeak(pigeon, args, progress_cb):# {{{
     video_path = pigeon['video_path']
     progress_cb(10)
     spf = 1 / pigeon['frame_rate']
-    all_frames_count = pigeon['frame_count']
+    all_frames_count = pigeon['frame_count_all']
     featpeak_indexes = np.load(f'{cache_path}/featpeak_indexes.npy')
 
     SLEN, c = len(featpeak_indexes), 0
@@ -266,7 +266,7 @@ def _post_stdwave(pigeon, args, progress_cb):# {{{
     video_path = pigeon['video_path']
     progress_cb(10)
     spf = 1 / pigeon['frame_rate']
-    all_frames_count = pigeon['frame_count']
+    all_frames_count = pigeon['frame_count_all']
     stdwave_indexes = np.load(f'{cache_path}/stdwave_indexes.npy').tolist()
     SLEN, c = len(stdwave_indexes), 0
     progress_cb(30)
@@ -480,7 +480,7 @@ def _post_diffimpulse(pigeon, args, progress_cb):# {{{
     video_path = pigeon['video_path']
     progress_cb(10)
     spf = 1 / pigeon['frame_rate']
-    all_frames_count = pigeon['frame_count']
+    all_frames_count = pigeon['frame_count_all']
     diffimpulse_indexes = np.load(f'{cache_path}/diffimpulse_indexes.npy').tolist()
     SLEN, c = len(diffimpulse_indexes), 0
     progress_cb(30)
