@@ -744,6 +744,8 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
             black_box = None
             focus_box = None
 
+        tsm_last_thresh = pigeon.get('tsm_last_threshold', 0.5)
+        tsm_last_smooth = pigeon.get('tsm_last_smooth', False)
         bg_focus_secs = pigeon['global_bg_focus'] / fps
         if bg_focus_secs > 0:
             bg_focus_str = '%02d:%02d' % (int(bg_focus_secs / 60), bg_focus_secs % 60)
@@ -757,9 +759,10 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
         )
 
         if args['rmstill_frame_enable']:
-            bottom_text += '%s|%s' % (
+            bottom_text += '%s|%s|%s' % (
                 '%.3f,%.3f' % (args['rmstill_rate_range'][0], args['rmstill_rate_range'][1]),
-                '%d' % args['rmstill_bin_threshold']
+                '%d' % args['rmstill_bin_threshold'],
+                'T:%d,%.3f' % (tsm_last_smooth, tsm_last_thresh)
             )
         if args['color_tracker_enable']:
             bottom_text += ' %s|%s|%d|%d' % (
@@ -799,6 +802,7 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
 
         chosen_stride = engine['chosen_stride']
         avg_embs_score = engine['avg_embs_score']
+        tsm_last_length = engine['tsm_last_length']
         feat_factors = engine['feat_factors']
         grap_speed = args.get('global_grap_speed', -1)
         while True:
@@ -826,6 +830,11 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
                         and valid_idx % (chosen_stride * NUM_FRAMES) == 0:
                     logger.info(f'valid_idx: {valid_idx} idx: {idx} osd: {osd}')
                     osd_blend = draw_osd_sim(embs_sims[osd], osd_size)
+                    if tsm_last_smooth and osd == (len(embs_sims) - 1):
+                        if tsm_last_length > 0:
+                            los = int((1 - tsm_last_length / NUM_FRAMES) * osd_size)
+                            logger.info(f'------->{los}')
+                            cv2.rectangle(osd_blend, (0, 0), (los, los), (0, 0, 0), 2)
                     if args.ef_is_send:
                         cv2.putText(osd_blend,
                                 '%.2f %.2f %.2f' % (args.ef_alpha, args.ef_beta, args.ef_gamma),
@@ -851,10 +860,9 @@ def _post_repnet(pigeon, args, progress_cb):# {{{
             except Exception:
                 logger.error(traceback.format_exc(limit=6))
             cv2.putText(frame_bgr,
-                    '%d %.1f %d %.1f/%.1f %s %s %s %s' % (width,
+                    '%d %.1f %d %.1f/%.1f %s %s %s' % (width,
                         fps, chosen_stride, sum_counts_dev[idx], sum_counts_dev[-1],
                         '%d' % fill_frame_count if fill_frame_count > 0 else '',
-                        'L:%.2f' % args.tsm_last_threshold if args.tsm_last_enable else '',
                         'V:%d' % grap_speed if grap_speed > 0 else '',
                         'P:%.2f/%.2f' % (within_period[idx], engine['pred_score'])),
                     (2, int(0.06 * height)),

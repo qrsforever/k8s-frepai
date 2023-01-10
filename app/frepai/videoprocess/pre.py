@@ -445,6 +445,7 @@ def video_preprocess(args, progress_cb=None):
     if args.rmstill_frame_enable or args.color_tracker_enable:# {{{
         resdata['avg_pred_score'] = args.get('avg_pred_score', 0.2)
         resdata['tsm_last_threshold'] = args.get('tsm_last_threshold', 0.5)
+        resdata['tsm_last_smooth'] = args.get('tsm_last_smooth', False)
         resdata['within_period_threshold'] = args.get('within_period_threshold', 0.5)
         smooth_interpolate = args.get('smooth_interpolate', False)
         sort_brightness = args.get('sort_brightness', False)# }}}
@@ -875,8 +876,8 @@ def video_preprocess(args, progress_cb=None):
                         keepframes, fill_frame_idxes,
                         np.random.randint(1, 255, size=(fill_frame_count, *keepframes[0].shape)), axis=0)
                 resdata['fill_frame_count'] = len(fill_frame_idxes)
-                logger.info(f'frames: {keep_frame_count} {fill_frame_count}')
                 np.save(f'{cache_path}/fillidxes.npy', fill_frame_idxes + np.arange(1, len(fill_frame_idxes) + 1))
+            logger.info(f'frames: {keep_frame_count} {fill_frame_count}')
         np.savez_compressed(f'{cache_path}/keepframe.npz', x=keepframes)
         np.save(f'{cache_path}/keepidxes.npy', keepidxes)
 

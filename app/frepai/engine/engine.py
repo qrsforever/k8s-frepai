@@ -475,7 +475,8 @@ def engine_process(pigeon, progress_cb=None):# {{{
     devmode = pigeon['devmode']
     within_period_threshold = pigeon.get('within_period_threshold', 0.5)
     avg_pred_score = pigeon.get('avg_pred_score', 0.2)
-    tsm_last_thresh = pigeon.get('tsm_last_thresh', 0.5)
+    tsm_last_thresh = pigeon.get('tsm_last_threshold', 0.5)
+    tsm_last_smooth = pigeon.get('tsm_last_smooth', False)
 
     pcaks = None
     if args.ef_is_send:
@@ -495,7 +496,7 @@ def engine_process(pigeon, progress_cb=None):# {{{
             avg_pred_score=avg_pred_score,
             strides=args.strides, batch_size=args.batch_size,
             tsm_last_thresh=tsm_last_thresh,
-            tsm_last_smooth=False,
+            tsm_last_smooth=tsm_last_smooth,
             pcaks=pcaks, progress_cb=_send_progress, devmode=devmode, logger=logger)
     logger.info('model inference time: %.3f' % (time.time() - t0))
 

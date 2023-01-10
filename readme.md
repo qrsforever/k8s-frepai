@@ -45,6 +45,7 @@
     "input_tile_shuffle": false,
     "within_period_threshold": 0.5,
     "tsm_last_threshold": 0.5,
+    "tsm_last_smooth": false,
     "smooth_interpolate": false,
 }
 ```
