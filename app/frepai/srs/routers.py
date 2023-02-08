@@ -25,8 +25,8 @@ api_srs = Blueprint("srs", __name__)
 def _srs_on_publish():
     reqjson = json.loads(request.get_data().decode())
     reqjson['external_ip'] = net_ip
-    reqjson['external_port'] = 31985
-    reqjson['webrtc_play'] = f'webrtc://{net_ip}:31985/{reqjson["app"]}/{reqjson["stream"]}{reqjson["param"]}'
+    reqjson['external_port'] = 31990
+    reqjson['webrtc_play'] = f'https://{net_ip}:30888/players/rtc_player.html{reqjson["param"]}&api=31990&app={reqjson["app"]}&stream={reqjson["stream"]}'
     api_srs.queue.put(reqjson)
     return '0'
 
@@ -35,7 +35,7 @@ def _srs_on_publish():
 def _srs_on_unpublish():
     reqjson = json.loads(request.get_data().decode())
     reqjson['external_ip'] = net_ip
-    reqjson['external_port'] = 31985
+    reqjson['external_port'] = 31990
     api_srs.queue.put(reqjson)
     return '0'
 
@@ -70,8 +70,8 @@ def _srs_on_dvr():
             **result[0],
             **reqjson,
             'external_ip': net_ip,
-            'external_port': 31985,
-            'webrtc_play': f'webrtc://{net_ip}:31985/{reqjson["app"]}/{reqjson["stream"]}{reqjson["param"]}',
+            'external_port': 31990,
+            'webrtc_play': f'https://{net_ip}:30888/players/rtc_player.html{reqjson["param"]}&api=31990&app={reqjson["app"]}&stream={reqjson["stream"]}',
             'duration': duration,
             'filename': os.path.basename(reqjson['file'])})
     os.remove(localfile)

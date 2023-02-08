@@ -30,6 +30,26 @@
 }
 ```
 
+### rmstill & color
+
+```json
+{
+    "sort_brightness": false,
+    "ef_is_send": false,
+    "ef_url": "",
+    "ef_alpha": 0.01,
+    "ef_beta": 0.7,
+    "ef_gamma": 0.8,
+    "strides": [1, 2],
+    "avg_pred_score": 0.2,
+    "input_tile_shuffle": false,
+    "within_period_threshold": 0.5,
+    "tsm_last_threshold": 0.5,
+    "tsm_last_smooth": false,
+    "smooth_interpolate": false,
+}
+```
+
 ### rmstill
 
 ```json
@@ -41,13 +61,6 @@
     "rmstill_area_mode": 0,
     "rmstill_white_rate": 0.1,
     "rmstill_white_window": 10,
-    "strides": [1, 2],
-    "avg_pred_score": 0.2,
-    "input_tile_shuffle": false,
-    "within_period_threshold": 0.5,
-    "tsm_last_enable": false,
-    "tsm_last_threshold": 0.5,
-    "tsm_last_smooth": false
 }
 ```
 
@@ -59,9 +72,6 @@
 ```json
 {
     "color_tracker_enable": true,
-    "strides": [1, 2],
-    "avg_pred_score": 0.2,
-    "within_period_threshold": 0.5,
     "color_select": 8,
     "color_rate_range": [0.2, 0.9],
     "color_enhance_blur": 25,

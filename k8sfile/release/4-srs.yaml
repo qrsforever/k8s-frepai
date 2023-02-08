@@ -12,11 +12,6 @@ data:
     srs_log_tank        console;
     srs_log_level       info;
 
-    http_api {
-        enabled         on;
-        listen          1985;
-    }
-
     rtc_server {
         enabled         on;
         listen 30008;
@@ -27,7 +22,25 @@ data:
         enabled         on;
         listen          8080;
         dir             ./objs/nginx/html;
+        https {
+            enabled on;
+            listen 8088;
+            key ./conf/server.key;
+            cert ./conf/server.crt;
+        }
     }
+
+    http_api {
+        enabled         on;
+        listen          1985;
+        https {
+            enabled on;
+            listen 1990;
+            key ./conf/server.key;
+            cert ./conf/server.crt;
+        }
+    }
+
 
   vhost.conf: |
     vhost seg.${DURATION}s {
@@ -73,6 +86,31 @@ data:
         }
     }
 
+  nginx.conf: |
+    worker_processes  1;
+    events {
+        worker_connections  1024;
+    }
+    http {
+        include             /etc/nginx/mime.types;
+        server {
+            listen       80;
+            listen       443 ssl http2;
+            server_name  _;
+            ssl_certificate      /etc/nginx/ssl/server.crt;
+            ssl_certificate_key  /etc/nginx/ssl/server.key;
+
+            location ~ ^/(console|players)/ {
+               proxy_pass http://127.0.0.1:8080/$request_uri;
+            }
+            location ~ ^/.+/.*\.(flv|m3u8|ts|aac|mp3)$ {
+               proxy_pass http://127.0.0.1:8080$request_uri;
+            }
+            location ~ ^/(api|rtc)/ {
+               proxy_pass http://127.0.0.1:1985$request_uri;
+            }
+        }
+    }
 ---
 
 kind: Service
@@ -102,6 +140,14 @@ spec:
       targetPort: rtc-port
       nodePort: 30008
       protocol: UDP
+    - name: srs-web-tls
+      port: 8088
+      targetPort: web-port-tls
+      nodePort: 30888
+    - name: srs-api-tls
+      port: 1990
+      targetPort: api-port-tls
+      nodePort: 31990
 
   # not modify source ip
   externalTrafficPolicy: Local
@@ -139,6 +185,10 @@ spec:
             - name: rtc-port
               containerPort: 30008
               protocol: UDP
+            - name: web-port-tls
+              containerPort: 8088
+            - name: api-port-tls
+              containerPort: 1990
 
           command:
             - /bin/sh
@@ -176,14 +226,17 @@ spec:
             - name: srsconf-volume
               mountPath: "/srs/"
               readOnly: true
-            # - name: srsconf-volume
-            #   mountPath: "/srs/server.conf"
-            #     subPath: server.conf
+            # - name: tlsconf-volume
+            #   mountPath: "/tls/"
             #   readOnly: true
-            # - name: srsconf-volume
-            #   mountPath: "/srs/vhost.conf"
-            #   # subPath: vhost.conf
-            #   readOnly: true
+            - name: tlsconf-volume
+              mountPath: "/usr/local/srs/conf/server.key"
+              subPath: "tls.key"
+              readOnly: true
+            - name: tlsconf-volume
+              mountPath: "/usr/local/srs/conf/server.crt"
+              subPath: "tls.crt"
+              readOnly: true
 
         - name: srs-app
           image: hzcsk8s.io/frepai/srs_app
@@ -233,13 +286,13 @@ spec:
               mountPath: /data
 
       volumes:
-      # - name: srs-dvr
-      #   hostPath:
-      #     path: /root
         - name: cache-volume
           emptyDir: {}
         - name: srsconf-volume
           configMap:
             name: frepai-srs-cm
+        - name: tlsconf-volume
+          secret:
+            secretName: frepai-srs-secret
       restartPolicy: Always
       terminationGracePeriodSeconds: 10
