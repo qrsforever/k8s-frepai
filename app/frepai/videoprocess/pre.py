@@ -64,6 +64,7 @@ upper_gray = np.array([180, 43, 220])
 
 INPUT_WIDTH = 112
 INPUT_HEIGHT = 112
+NUM_FRAMES = 64
 SMALL_AREA_THRESH = 150 * 150
 MIN_AREA_THRESH = 8 * 8
 
@@ -74,10 +75,10 @@ def input_tile_shuffle(image):
     tiled_array = tiled_array.swapaxes(1, 2).reshape((-1, 28, 28, 3))
     tiled_array = np.take(tiled_array, indexes, axis=0)
     vs = []
-    vs.append(np.hstack([tiled_array[0], np.flip(tiled_array[1], axis=0), np.flip(tiled_array[2], axis=1), 255 - tiled_array[3]]))
-    vs.append(np.hstack([tiled_array[4], np.flip(tiled_array[5], axis=0), 255 - np.flip(tiled_array[6], axis=1), tiled_array[7]]))
-    vs.append(np.hstack([tiled_array[8], 255 - np.flip(tiled_array[9], axis=0), np.flip(tiled_array[10], axis=1), tiled_array[11]]))
-    vs.append(np.hstack([255 - tiled_array[12], np.flip(tiled_array[13], axis=0), np.flip(tiled_array[14], axis=1), tiled_array[15]]))
+    vs.append(np.hstack([255 - tiled_array[0], np.flip(tiled_array[1], axis=0), np.flip(tiled_array[2], axis=1), 255 - tiled_array[3]]))
+    vs.append(np.hstack([tiled_array[4], 255 - np.flip(tiled_array[5], axis=0), 255 - np.flip(tiled_array[6], axis=1), tiled_array[7]]))
+    vs.append(np.hstack([tiled_array[8], 255 - np.flip(tiled_array[9], axis=0), 255 - np.flip(tiled_array[10], axis=1), tiled_array[11]]))
+    vs.append(np.hstack([255 - tiled_array[12], np.flip(tiled_array[13], axis=0), np.flip(tiled_array[14], axis=1), 255 - tiled_array[15]]))
     # for i in range(4):
     #     vs.append(np.hstack(tiled_array[i * 4: (i + 1) * 4]))
     return np.vstack(vs)
@@ -129,8 +130,10 @@ def _pre_kstest(args, resdata, progress_cb):
     with open(kstest_ecdfs_path, 'wb') as fw:
         pickle.dump(pcaks, fw)
 
-    resdata['kstest_coss3_path'] = os.path.join('/', *args.resdata['out_path'][8:].split('/')[1:])
+    out_path = args.pigeon['out_path']
+    resdata['kstest_coss3_path'] = os.path.join('/', *out_path[8:].split('/')[1:])
     resdata['kstest_ecdfs_path'] = kstest_ecdfs_path
+    resdata['pcaks'] = out_path
     progress_cb(100)
     return resdata
 
@@ -184,7 +187,7 @@ def video_preprocess(args, progress_cb=None):
     video_path = args.video
     logger.info(f'from: {video_path}')
 
-    if 'https://' in video_path:
+    if video_path is not None and 'https://' in video_path:
         segs = video_path[8:].split('/')
         vname = segs[-1].split('.')[0]
         coss3_path = os.path.join('/', *segs[1:3], 'outputs', vname, 'repnet_tf')
@@ -196,6 +199,7 @@ def video_preprocess(args, progress_cb=None):
     cache_path = f'/data/cache/{int(time.time() * 1000)}/{vname}'
     mkdir_p(cache_path)
     resdata['cache_path'] = cache_path
+    resdata['coss3_path'] = ''
 
     if 'pcaks' in args:
         return _pre_kstest(args, resdata, _send_progress)
@@ -370,8 +374,8 @@ def video_preprocess(args, progress_cb=None):
 
     resdata['global_grap_step'] = global_grap_step
     resdata['video_path'] = video_path
-    resdata['frame_count'] = all_cnt
-    resdata['frame_count_lite'] = cnt
+    resdata['frame_count'] = cnt
+    resdata['frame_count_all'] = all_cnt
 
     # global_bg_frame_ = [None, None]{{{
     # global_bg_window = args.get('global_bg_window', 0)
@@ -438,6 +442,14 @@ def video_preprocess(args, progress_cb=None):
             hsv_range.append((lo, hi))
         return hsv_range# }}}
 
+    if args.rmstill_frame_enable or args.color_tracker_enable:# {{{
+        resdata['avg_pred_score'] = args.get('avg_pred_score', 0.2)
+        resdata['tsm_last_threshold'] = args.get('tsm_last_threshold', 0.5)
+        resdata['tsm_last_smooth'] = args.get('tsm_last_smooth', False)
+        resdata['within_period_threshold'] = args.get('within_period_threshold', 0.5)
+        smooth_interpolate = args.get('smooth_interpolate', False)
+        sort_brightness = args.get('sort_brightness', False)# }}}
+
     if args.rmstill_frame_enable:# {{{
         rmstill_rate_range = args.get('rmstill_rate_range', None)
         if rmstill_rate_range is None:
@@ -457,9 +469,6 @@ def video_preprocess(args, progress_cb=None):
             rmstill_white_buffer = np.zeros((rmstill_white_window, ))
             frames_invalid = True
         resdata['rmstill_area_range'] = rmstill_area_range
-        resdata['avg_pred_score'] = args.get('avg_pred_score', 0.2)
-        resdata['within_period_threshold'] = args.get('within_period_threshold', 0.5)
-
         logger.info(f'rmstill: ({area}, {rmstill_area_range}, {rmstill_bin_threshold})')
 # }}}
     elif args.color_tracker_enable:# {{{
@@ -524,8 +533,6 @@ def video_preprocess(args, progress_cb=None):
         color_upper_value = int(color_buffer_size * color_upper_rate)
         logger.info(f'color_tracker: ({color_area_range}, {color_lower_value}, {color_upper_value})')
         resdata['color_area_range'] = color_area_range
-        resdata['avg_pred_score'] = args.get('avg_pred_score', 0.2)
-        resdata['within_period_threshold'] = args.get('within_period_threshold', 0.5)
         resdata['color_lower_value'] = color_lower_value
         resdata['color_upper_value'] = color_upper_value
 # }}}
@@ -583,7 +590,7 @@ def video_preprocess(args, progress_cb=None):
 # }}}
     tile_shuffle = args.get('input_tile_shuffle', False)
 
-    brightvals, stdwave, diffimpulse, featpeak, direction = [], [], [], [], []
+    brightvals, featdata, diffimpulse, featpeak = [], [], [], []
     keepframe, keepidxes, half_focus_width = [], [], -1
     if devmode:
         binframes, binpoints, contareas, colorvals, waverates = [], [], [], [], []
@@ -687,8 +694,9 @@ def video_preprocess(args, progress_cb=None):
 
             if color_lower_value < val < color_upper_value:
                 keep_flag = True
+                featdata.append(round(colorval / area, 3))
                 if devmode:
-                    colorvals.append([colorval , val])
+                    colorvals.append([featdata[-1], val])
                     frame_tmp = cv2.cvtColor(color_mask, cv2.COLOR_GRAY2RGB)
                     binframes.append(cv2.resize(frame_tmp, (INPUT_WIDTH, INPUT_HEIGHT)))
 # }}}
@@ -715,17 +723,7 @@ def video_preprocess(args, progress_cb=None):
                     feat = 0
             if devmode:
                 waverates.append(rate_)
-            stdwave.append(feat)
-
-            if debug_write_video: # debug
-                if len(stdwave) < 500:
-                    writer.write(frame_raw)
-                if len(stdwave) == 500:
-                    logger.info(f'{frame_bgr.shape} {frame_raw.shape}')
-                    writer.release()
-                    logger.info(f'{np.array(stdwave, np.int16)}')
-                    os.system(f'ffmpeg -an -i {cache_path}/_pre_video.mp4 {ffmpeg_args} {cache_path}/pre-video.mp4 2>/dev/null')
-                    resdata['upload_files'].append('pre-video.mp4')
+            featdata.append(feat)
 # }}}
         elif args.featpeak_tracker_enbale:# {{{
             frame_tmp = cv2.absdiff(frame_gray, pre_frame_gray)
@@ -744,7 +742,7 @@ def video_preprocess(args, progress_cb=None):
             lfeat = _calc_feat(data[:half_focus_width])
             rfeat = _calc_feat(data[half_focus_width:])
             mfeat = abs(lfeat - rfeat)
-            direction.append([mfeat if mfeat != 0 else 0.01, lfeat, rfeat])
+            featdata.append([mfeat if mfeat != 0 else 0.01, lfeat, rfeat])
             if debug_write_video:
                 if global_remove_shadow is not None:
                     frame_raw[focus_y1:focus_y2, focus_x1:focus_x2, :] = frame_bgr
@@ -769,6 +767,10 @@ def video_preprocess(args, progress_cb=None):
                 diffimpulse.append(0)
 # }}}
         if keep_flag:
+            if sort_brightness:
+                sorted_idxes = np.argsort(frame_gray.ravel())[::-1]
+                sorted_frame = np.take_along_axis(frame_bgr.reshape((-1, 3)), sorted_idxes.reshape((-1, 1)), axis=0)
+                frame_bgr = sorted_frame.reshape(frame_bgr.shape)
             if focus_box is not None:
                 if args.focus_box_repnum > 1:
                     frame_bgr = np.hstack([frame_bgr] * args.focus_box_repnum)
@@ -806,24 +808,30 @@ def video_preprocess(args, progress_cb=None):
             return None
 
     if args.stdwave_tracker_enable:
-        stdwave = np.asarray(stdwave)
-        if len(stdwave[stdwave > global_feature_minval]) < global_feature_minnum:
+        featdata = np.asarray(featdata)
+        if len(featdata[featdata > global_feature_minval]) < global_feature_minnum:
             logger.warning(f'global_feature_minval: {global_feature_minval}, {global_feature_minnum}')
             _send_progress(100, True)
             rmdir_p(os.path.dirname(cache_path))
             return None
-        np.save(f'{cache_path}/stdwave_data.npy', stdwave)
+        np.save(f'{cache_path}/stdwave_data.npy', featdata)
         if devmode:
             np.save(f'{cache_path}/stdwave_rates.npy', waverates)
-        # resdata['upload_files'].append('stdwave_data.npy')
+    elif args.color_tracker_enable and global_feature_minval < 0:
+        featdata = np.asarray(featdata)
+        if len(featdata[featdata > global_feature_minval]) < global_feature_minnum:
+            logger.warning(f'global_feature_minval: {global_feature_minval}, {global_feature_minnum}')
+            _send_progress(100, True)
+            rmdir_p(os.path.dirname(cache_path))
+            return None
     elif args.direction_tracker_enable:
-        direction = np.asarray(direction)
-        features = direction[:, 0]
+        featdata = np.asarray(featdata)
+        features = featdata[:, 0]
         if len(features[features > global_feature_minval]) < global_feature_minnum:
             _send_progress(100, True)
             rmdir_p(os.path.dirname(cache_path))
             return None
-        np.save(f'/data/direction_data.npy', direction)
+        np.save(f'/data/direction_data.npy', featdata)
         if debug_write_video:
             writer.release()
             os.system(f'ffmpeg -an -i {cache_path}/_pre_video.mp4 {ffmpeg_args} /data/pre-video.mp4 2>/dev/null')
@@ -851,21 +859,54 @@ def video_preprocess(args, progress_cb=None):
             rmdir_p(os.path.dirname(cache_path))
             return None
 
-    if len(keepframe) > 0:
-        np.savez_compressed(f'{cache_path}/keepframe.npz', x=np.asarray(keepframe))
-        np.save(f'{cache_path}/keepidxes.npy', np.asarray(keepidxes))
+    keep_frame_count, fill_frame_count, fill_frame_idxes = len(keepframe), 0, None
+    if keep_frame_count > NUM_FRAMES:
+        keepframes, keepidxes = np.asarray(keepframe), np.asarray(keepidxes)
+        if smooth_interpolate:
+            fill_frame_count = NUM_FRAMES - keep_frame_count % NUM_FRAMES
+            if 1 < fill_frame_count < 20:
+                fill_frame_step = int(keep_frame_count / fill_frame_count)
+                fill_frame_idxes = np.arange(fill_frame_step - 1, keep_frame_count, fill_frame_step)
+                fill_frame_idxes = fill_frame_idxes[:fill_frame_count]
+                fill_diff_idxes = np.diff([0] + fill_frame_idxes.tolist() + [keep_frame_count])
+                keepidxes = keepidxes + np.hstack([[i] * j for i, j in enumerate(fill_diff_idxes)])
+                keepidxes = np.insert(keepidxes, fill_frame_idxes, keepidxes[fill_frame_idxes] - 1)
+                # keepframes = np.insert(keepframes, fill_frame_idxes, keepframes[fill_frame_idxes], axis=0)
+                keepframes = np.insert(
+                        keepframes, fill_frame_idxes,
+                        np.random.randint(1, 255, size=(fill_frame_count, *keepframes[0].shape)), axis=0)
+                resdata['fill_frame_count'] = len(fill_frame_idxes)
+                np.save(f'{cache_path}/fillidxes.npy', fill_frame_idxes + np.arange(1, len(fill_frame_idxes) + 1))
+            logger.info(f'frames: {keep_frame_count} {fill_frame_count}')
+        np.savez_compressed(f'{cache_path}/keepframe.npz', x=keepframes)
+        np.save(f'{cache_path}/keepidxes.npy', keepidxes)
 
     if devmode:
         if len(brightvals) > 0:
-            np.save(f'{cache_path}/brightvals.npy', np.asarray(brightvals))
+            brightvals = np.asarray(brightvals)
+            if fill_frame_idxes is not None:
+                brightvals = np.insert(brightvals, fill_frame_idxes, brightvals[fill_frame_idxes])
+            np.save(f'{cache_path}/brightvals.npy', brightvals)
         if len(binpoints) > 0:
-            np.save(f'{cache_path}/binpoints.npy', np.asarray(binpoints))
+            binpoints = np.asarray(binpoints)
+            if fill_frame_idxes is not None:
+                binpoints = np.insert(binpoints, fill_frame_idxes, binpoints[fill_frame_idxes])
+            np.save(f'{cache_path}/binpoints.npy', binpoints)
         if len(binframes) > 0:
-            np.savez_compressed(f'{cache_path}/binframes.npz', x=np.asarray(binframes))
+            binframes = np.asarray(binframes)
+            if fill_frame_idxes is not None:
+                binframes = np.insert(binframes, fill_frame_idxes, binframes[fill_frame_idxes], axis=0)
+            np.savez_compressed(f'{cache_path}/binframes.npz', x=binframes)
         if len(contareas) > 0:
-            np.save(f'{cache_path}/contareas.npy', np.asarray(contareas))
+            contareas = np.asarray(contareas)
+            if fill_frame_idxes is not None:
+                contareas = np.insert(contareas, fill_frame_idxes, contareas[fill_frame_idxes])
+            np.save(f'{cache_path}/contareas.npy', contareas)
         if len(colorvals) > 0:
-            np.save(f'{cache_path}/colorvals.npy', np.asarray(colorvals))
+            colorvals = np.asarray(colorvals)
+            if fill_frame_idxes is not None:
+                colorvals = np.insert(colorvals, fill_frame_idxes, colorvals[fill_frame_idxes])
+            np.save(f'{cache_path}/colorvals.npy', colorvals)
 
     with open(f'{cache_path}/config.json', 'w') as f:
         f.write(json.dumps(dict(args)))

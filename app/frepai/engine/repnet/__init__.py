@@ -84,9 +84,10 @@ def get_counts(model, frames, strides, batch_size,
                tsm_last_smooth=False,
                constant_speed=False,
                median_filter=True,
-               osd_feat=False, pcaks=None, progress_cb=None):
+               osd_feat=False, pcaks=None, progress_cb=None, devmode=False, logger=None):
     """Pass frames through model and conver period predictions to count."""
     seq_len = len(frames)
+    tsm_last_smooth_list = []
     raw_scores_list = []
     scores = []
     embs_list = []
@@ -103,69 +104,63 @@ def get_counts(model, frames, strides, batch_size,
     for i, stride in enumerate(strides):
         # num_batches = int(np.ceil(seq_len / model.num_frames / stride / batch_size))
         num_batches = int(np.floor(seq_len / model.num_frames / stride / batch_size))
+        remain_len = 0
         raw_scores_per_stride = []
         within_period_score_stride = []
         embs_stride = []
         batch_idx = -1
+        MS = model.num_frames * stride
+        BMS = batch_size * MS
+
         for batch_idx in range(num_batches):
-            idxes = tf.range(batch_idx * batch_size * model.num_frames * stride,
-                    (batch_idx + 1) * batch_size * model.num_frames * stride,
-                    stride)
+            idxes = tf.range(batch_idx * BMS, (batch_idx + 1) * BMS, stride)
             idxes = tf.clip_by_value(idxes, 0, seq_len - 1)
             curr_frames = tf.gather(frames, idxes)
             curr_frames = tf.reshape(
                 curr_frames,
                 [batch_size, model.num_frames, model.image_size, model.image_size, 3])
-
             raw_scores, within_period_scores, embs = model(curr_frames)
-            raw_scores_per_stride.append(np.reshape(raw_scores.numpy(),
-                                                    [-1, model.num_frames // 2]))
-            within_period_score_stride.append(np.reshape(within_period_scores.numpy(),
-                                                         [-1, 1]))
+            raw_scores_per_stride.append(np.reshape(raw_scores.numpy(), [-1, model.num_frames // 2]))
+            within_period_score_stride.append(np.reshape(within_period_scores.numpy(), [-1, 1]))
             embs_stride.append(embs)
         else:
-            curr_idx = (batch_idx + 1) * batch_size * model.num_frames * stride
-            remain_len = seq_len - curr_idx
-            remain_batch_size = int(np.ceil(remain_len / model.num_frames / stride))
-            idxes = tf.range(curr_idx,
-                    curr_idx + remain_batch_size * model.num_frames * stride,
-                    stride)
+            curr_idx = (batch_idx + 1) * BMS
+            remain_len, remain_lst = seq_len - curr_idx, 0
             if tsm_last_smooth:
-                if idxes[-1] >= seq_len:
-                    idxes = idxes.numpy()
-                    l, s = N, len(idxes[idxes >= seq_len])
-                    v = l - s
-                    p = int(l / v)
-                    print('last tsm:', remain_batch_size, s, v, p, idxes.shape)
-                    if p > 1:
-                        v = p * v
-                        if v == l:
-                            idxes = np.hstack([idxes[:-l], np.repeat(idxes[-l:-s], p)])
-                        else:
-                            idxes = np.hstack([idxes[:-l], np.repeat(idxes[-l:-s], p), idxes[v - l:]])
-                        s = l - v
-                    print('s, v:', s, v, idxes.shape)
-                    if s != 0:
-                        t = round(v / s)
-                        j = 0
-                        for k, x in enumerate(idxes[-l:-s].tolist()):
-                            idxes[-l + j] = x
-                            j += 1
-                            if k % t == 0:
-                                idxes[-l + j] = idxes[-l + j - 1]
-                                j += 1
-            idxes = tf.clip_by_value(idxes, 0, seq_len - 1)
+                remain_batch_size = int(remain_len / MS)
+                remain_lst = remain_len - remain_batch_size * MS
+                idxes = tf.range(curr_idx, seq_len - remain_lst, stride)
+            else:
+                remain_batch_size = int(np.ceil(remain_len / MS))
+                idxes = tf.range(curr_idx, curr_idx + remain_batch_size * MS, stride)
+                idxes = tf.clip_by_value(idxes, 0, seq_len - 1)
+
             curr_frames = tf.gather(frames, idxes)
             curr_frames = tf.reshape(
                 curr_frames,
                 [remain_batch_size, model.num_frames, model.image_size, model.image_size, 3])
 
             raw_scores, within_period_scores, embs = model(curr_frames)
-            raw_scores_per_stride.append(np.reshape(raw_scores.numpy(),
-                                                    [-1, model.num_frames // 2]))
-            within_period_score_stride.append(np.reshape(within_period_scores.numpy(),
-                                                         [-1, 1]))
+            raw_scores_per_stride.append(np.reshape(raw_scores.numpy(), [-1, model.num_frames // 2]))
+            within_period_score_stride.append(np.reshape(within_period_scores.numpy(), [-1, 1]))
             embs_stride.append(embs)
+            if remain_lst > 0:
+                remain_lst = int(remain_lst / stride)
+                idxes = tf.sort(tf.range(seq_len - 1, seq_len - 1 - MS, -stride))
+                # logger.info(f'--> {remain_lst}, {idxes.numpy().tolist()}')
+                curr_frames = tf.gather(frames, idxes)
+                curr_frames = tf.reshape(
+                    curr_frames,
+                    [1, model.num_frames, model.image_size, model.image_size, 3])
+                raw_scores, within_period_scores, embs = model(curr_frames)
+                raw_scores = np.reshape(raw_scores.numpy(), [-1, model.num_frames // 2])
+                within_period_scores = np.reshape(within_period_scores.numpy(), [-1, 1])
+                raw_scores = np.concatenate([raw_scores[-remain_lst:], raw_scores[:remain_lst]])
+                within_period_scores = np.concatenate([within_period_scores[-remain_lst:], within_period_scores[:remain_lst]])
+                raw_scores_per_stride.append(raw_scores)
+                within_period_score_stride.append(within_period_scores)
+                embs_stride.append(embs)
+            tsm_last_smooth_list.append(remain_lst)
 
         if progress_cb:
             progress_cb(99 * Fprg * (i + 1) / len(strides))
@@ -189,20 +184,21 @@ def get_counts(model, frames, strides, batch_size,
     final_embs = embs_list[argmax_strides]
 
     # QRS
-    avg_embs_score = []
     within_period_scores = within_period_scores_list[argmax_strides]
-    for i in range(0, len(within_period_scores) - model.num_frames, model.num_frames):
+    avg_embs_score = []
+    for i in range(0, len(within_period_scores), model.num_frames):
         embs_scores = within_period_scores[i:i + model.num_frames]
         mscore = np.mean(embs_scores)
+        # penalty
         if mscore < avg_pred_score:
-            within_period_scores[i:i + model.num_frames] = (1 + mscore - avg_pred_score) * embs_scores 
+            within_period_scores[i:i + model.num_frames] = (1 + mscore - avg_pred_score) * embs_scores
         avg_embs_score.append(mscore)
     else:
         j = model.num_frames if tsm_last_smooth else int(seq_len / chosen_stride) % model.num_frames
         embs_scores = within_period_scores[i:i + j]
         mscore = np.mean(embs_scores)
         if mscore < avg_pred_score:
-            within_period_scores[i:i + j] = (1 + mscore - avg_pred_score) * embs_scores 
+            within_period_scores[i:i + j] = (1 + mscore - avg_pred_score) * embs_scores
         avg_embs_score.append(mscore)
 
     feat_factors = []
@@ -310,8 +306,9 @@ def get_counts(model, frames, strides, batch_size,
         'per_frame_counts': np.round(per_frame_counts.astype(float), 3),
         'final_embs': final_embs,
         'avg_embs_score': avg_embs_score,
+        'tsm_last_length': tsm_last_smooth_list[argmax_strides],
         'feature_maps': feature_maps,
-        'feat_factors':feat_factors
+        'feat_factors': feat_factors
     }
 
 
