@@ -1,3 +1,4 @@
 srs5.0
-srs-server.crt
-srs-server.key
+*.crt
+*.key
+*.pem
