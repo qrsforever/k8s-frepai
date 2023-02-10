@@ -19,97 +19,97 @@ data:
     }
 
     http_server {
-        enabled         on;
-        listen          8080;
-        dir             ./objs/nginx/html;
-        https {
-            enabled on;
-            listen 8088;
-            key ./conf/server.key;
-            cert ./conf/server.crt;
-        }
+      enabled         on;
+      listen          8080;
+      dir             ./objs/nginx/html;
+      https {
+        enabled on;
+        listen 8088;
+        key ./conf/server.key;
+        cert ./conf/server.crt;
+      }
     }
 
     http_api {
-        enabled         on;
-        listen          1985;
-        https {
-            enabled on;
-            listen 1990;
-            key ./conf/server.key;
-            cert ./conf/server.crt;
-        }
+      enabled         on;
+      listen          1985;
+      https {
+        enabled on;
+        listen 1990;
+        key ./conf/server.key;
+        cert ./conf/server.crt;
+      }
     }
 
 
   vhost.conf: |
     vhost seg.${DURATION}s {
-        tcp_nodelay     on;
-        min_latency     on;
-        play {
-            gop_cache       off;
-            queue_length    10;
-            mw_latency      0;
-            mw_msgs 0;
-        }
+      tcp_nodelay     on;
+      min_latency     on;
+      play {
+        gop_cache       off;
+        queue_length    10;
+        mw_latency      0;
+        mw_msgs 0;
+      }
 
-        publish {
-            mr          off;
-            normal_timeout      20000;
-        }
+      publish {
+        mr          off;
+        normal_timeout      20000;
+      }
 
-        rtc {
-            enabled     on;
-            keep_bframe on;
-            rtmp_to_rtc on;
-            rtc_to_rtmp off;
-        }
+      rtc {
+        enabled     on;
+        keep_bframe on;
+        rtmp_to_rtc on;
+        rtc_to_rtmp off;
+      }
 
-        dvr {
-            enabled             on;
-            dvr_path            /data/[app]/[stream]/[2006][01][02][15][04][05].mp4;
-            dvr_plan            segment;
-            dvr_duration        ${DURATION};
-            dvr_wait_keyframe   on;
-        }
+      dvr {
+        enabled             on;
+        dvr_path            /data/[app]/[stream]/[2006][01][02][15][04][05].mp4;
+        dvr_plan            segment;
+        dvr_duration        ${DURATION};
+        dvr_wait_keyframe   on;
+      }
 
-        http_hooks {
-            enabled       	on;
-            # on_connect      http://127.0.0.1:1818/apis/srs/v1/on_connect;
-            # on_close        http://127.0.0.1:1818/apis/srs/v1/on_close;
-            on_publish      http://127.0.0.1:1818/apis/srs/v1/on_publish;
-            on_unpublish    http://127.0.0.1:1818/apis/srs/v1/on_unpublish;
-            # on_play         http://127.0.0.1:1818/apis/srs/v1/on_play;
-            # on_stop         http://127.0.0.1:1818/apis/srs/v1/on_stop;
-            # on_hls          http://127.0.0.1:1818/apis/srs/v1/on_hls;
-            on_dvr          http://127.0.0.1:1818/apis/srs/v1/on_dvr;
-        }
+      http_hooks {
+        enabled       	on;
+        # on_connect      http://127.0.0.1:1818/apis/srs/v1/on_connect;
+        # on_close        http://127.0.0.1:1818/apis/srs/v1/on_close;
+        on_publish      http://127.0.0.1:1818/apis/srs/v1/on_publish;
+        on_unpublish    http://127.0.0.1:1818/apis/srs/v1/on_unpublish;
+        # on_play         http://127.0.0.1:1818/apis/srs/v1/on_play;
+        # on_stop         http://127.0.0.1:1818/apis/srs/v1/on_stop;
+        # on_hls          http://127.0.0.1:1818/apis/srs/v1/on_hls;
+        on_dvr          http://127.0.0.1:1818/apis/srs/v1/on_dvr;
+      }
     }
 
   nginx.conf: |
     worker_processes  1;
     events {
-        worker_connections  1024;
+      worker_connections  1024;
     }
     http {
-        include             /etc/nginx/mime.types;
-        server {
-            listen       80;
-            listen       443 ssl http2;
-            server_name  _;
-            ssl_certificate      /etc/nginx/ssl/server.crt;
-            ssl_certificate_key  /etc/nginx/ssl/server.key;
+      include             /etc/nginx/mime.types;
+      server {
+        listen       80;
+        # listen       443 ssl http2;
+        server_name  _;
+        # ssl_certificate      /etc/nginx/ssl/server.crt;
+        # ssl_certificate_key  /etc/nginx/ssl/server.key;
 
-            location ~ ^/(console|players)/ {
-               proxy_pass http://127.0.0.1:8080/$request_uri;
-            }
-            location ~ ^/.+/.*\.(flv|m3u8|ts|aac|mp3)$ {
-               proxy_pass http://127.0.0.1:8080$request_uri;
-            }
-            location ~ ^/(api|rtc)/ {
-               proxy_pass http://127.0.0.1:1985$request_uri;
-            }
+        location ~ ^/(console|players)/ {
+          proxy_pass http://$arg_ip:8080$request_uri;
         }
+        location ~ ^/.+/.*\.(flv|m3u8|ts|aac|mp3)$ {
+          proxy_pass http://$arg_ip:8080$request_uri;
+        }
+        location ~ ^/(api|rtc)/ {
+          proxy_pass http://$arg_ip:1985$request_uri;
+        }
+      }
     }
 ---
 
@@ -148,6 +148,9 @@ spec:
       port: 1990
       targetPort: api-port-tls
       nodePort: 31990
+    - name: srs-nginx
+      port: 80
+      targetPort: srs-nginx-port
 
   # not modify source ip
   externalTrafficPolicy: Local
@@ -229,14 +232,14 @@ spec:
             # - name: tlsconf-volume
             #   mountPath: "/tls/"
             #   readOnly: true
-            - name: tlsconf-volume
-              mountPath: "/usr/local/srs/conf/server.key"
-              subPath: "tls.key"
-              readOnly: true
-            - name: tlsconf-volume
-              mountPath: "/usr/local/srs/conf/server.crt"
-              subPath: "tls.crt"
-              readOnly: true
+            # - name: tlsconf-volume
+            #   mountPath: "/usr/local/srs/conf/server.key"
+            #   subPath: "tls.key"
+            #   readOnly: true
+            # - name: tlsconf-volume
+            #   mountPath: "/usr/local/srs/conf/server.crt"
+            #   subPath: "tls.crt"
+            #   readOnly: true
 
         - name: srs-app
           image: hzcsk8s.io/frepai/srs_app
@@ -244,7 +247,7 @@ spec:
           command:
             - /bin/sh
             - -c
-          args: ["NET_IP=$(curl -s ipecho.net/plain) python3 app_service.py --task srs.dvr"]
+          args: ["NET_IP=$(curl -s ipecho.net/plain) LAN_IP=$(cat /etc/hosts | grep 'srs-' | awk '{print $1}') python3 app_service.py --task srs.dvr"]
 
           env:
             - name: KAFKA_HOST
@@ -285,14 +288,26 @@ spec:
             - name: cache-volume
               mountPath: /data
 
+        - name: srs-nginx
+          image: nginx
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: srs-nginx-port
+              containerPort: 80
+              protocol: TCP
+          volumeMounts:
+            - name: srsconf-volume
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+
       volumes:
         - name: cache-volume
           emptyDir: {}
         - name: srsconf-volume
           configMap:
             name: frepai-srs-cm
-        - name: tlsconf-volume
-          secret:
-            secretName: frepai-srs-secret
+        # - name: tlsconf-volume
+        #   secret:
+        #     secretName: frepai-srs-secret
       restartPolicy: Always
       terminationGracePeriodSeconds: 10
