@@ -28,7 +28,7 @@ def _srs_on_publish():
     reqjson['external_ip'] = net_ip
     reqjson['external_port'] = 31985
     reqjson['external_port_tls'] = 31990
-    reqjson['webrtc_play'] = f'http://{net_ip}:30808/players/rtc_player.html{reqjson["param"]}&api=31985&app={reqjson["app"]}&stream={reqjson["stream"]}'
+    reqjson['webrtc_play'] = f'http://{net_ip}:30808/players/rtc_player.html{reqjson["param"]}&ip={lan_ip}&api=31985&app={reqjson["app"]}&stream={reqjson["stream"]}'
     reqjson['webrtc_play_tls'] = f'https://{net_ip}:30888/players/rtc_player.html{reqjson["param"]}&ip={lan_ip}&api=31990&app={reqjson["app"]}&stream={reqjson["stream"]}'
     api_srs.queue.put(reqjson)
     return '0'
