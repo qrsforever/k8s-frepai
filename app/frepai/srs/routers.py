@@ -25,11 +25,14 @@ api_srs = Blueprint("srs", __name__)
 @api_srs.route('/on_publish', methods=['POST'])
 def _srs_on_publish():
     reqjson = json.loads(request.get_data().decode())
-    reqjson['external_ip'] = net_ip
-    reqjson['external_port'] = 31985
+    reqjson["param"] = reqjson["param"] + f"&ip={lan_ip}"
+    # reqjson['external_ip'] = net_ip
+    # reqjson['external_port'] = 31985
+    reqjson['external_ip'] = lan_ip
+    reqjson['external_port'] = 1985
     reqjson['external_port_tls'] = 31990
-    reqjson['webrtc_play'] = f'http://{net_ip}:30808/players/rtc_player.html{reqjson["param"]}&ip={lan_ip}&api=31985&app={reqjson["app"]}&stream={reqjson["stream"]}'
-    reqjson['webrtc_play_tls'] = f'https://{net_ip}:30888/players/rtc_player.html{reqjson["param"]}&ip={lan_ip}&api=31990&app={reqjson["app"]}&stream={reqjson["stream"]}'
+    reqjson['webrtc_play'] = f'http://{net_ip}:30808/players/rtc_player.html{reqjson["param"]}&api=31985&app={reqjson["app"]}&stream={reqjson["stream"]}'
+    reqjson['webrtc_play_tls'] = f'https://{net_ip}:30888/players/rtc_player.html{reqjson["param"]}&api=31990&app={reqjson["app"]}&stream={reqjson["stream"]}'
     api_srs.queue.put(reqjson)
     return '0'
 
@@ -37,8 +40,10 @@ def _srs_on_publish():
 @api_srs.route('/on_unpublish', methods=['POST'])
 def _srs_on_unpublish():
     reqjson = json.loads(request.get_data().decode())
-    reqjson['external_ip'] = net_ip
-    reqjson['external_port'] = 31985
+    # reqjson['external_ip'] = net_ip
+    # reqjson['external_port'] = 31985
+    reqjson['external_ip'] = lan_ip
+    reqjson['external_port'] = 1985
     reqjson['external_port_tls'] = 31990
     api_srs.queue.put(reqjson)
     return '0'
@@ -73,8 +78,8 @@ def _srs_on_dvr():
         api_srs.queue.put({
             **result[0],
             **reqjson,
-            'external_ip': net_ip,
-            'external_port': 31985,
+            'external_ip': lan_ip,
+            'external_port': 1985,
             'external_port_tls': 31988,
             'webrtc_play': f'http://{net_ip}:30808/players/rtc_player.html{reqjson["param"]}&ip={lan_ip}&api=31985&app={reqjson["app"]}&stream={reqjson["stream"]}',
             'webrtc_play_tls': f'https://{net_ip}:30888/players/rtc_player.html{reqjson["param"]}&ip={lan_ip}&api=31990&app={reqjson["app"]}&stream={reqjson["stream"]}',
