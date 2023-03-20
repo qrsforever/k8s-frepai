@@ -168,7 +168,7 @@ spec:
   selector:
     matchLabels:
       app: srs-app
-  replicas: 2
+  replicas: 1
   template:
     metadata:
       labels:
