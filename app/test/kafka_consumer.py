@@ -24,10 +24,12 @@ else:
 
 print(host)
 
+group_id = 'frepai_input' # 'frepai_output'
+
 consumer = KafkaConsumer(
         'frepai_output',
         bootstrap_servers=[f'{host}:19092'],
-        group_id='frepai_output',
+        group_id=group_id,
         value_deserializer=lambda v: json.loads(v.decode('utf-8')),
         auto_offset_reset='latest')
 
