@@ -476,6 +476,7 @@ def video_preprocess(args, progress_cb=None):
         color_hsv_range = []
         color_select = args.get('color_select', 8)
         color_select_range = args.get('color_select_range', [])
+        # _parse_color_range
         if color_select < 0 or len(color_select_range) > 0:
             for item in color_select_range:
                 h_, s_, v_ = [0, 255], [0, 255], [0, 255]
