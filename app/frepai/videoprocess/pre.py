@@ -84,7 +84,7 @@ def input_tile_shuffle(image):
     return np.vstack(vs)
 
 
-def _pre_kstest(args, resdata, progress_cb):
+def _pre_kstest(args, resdata, progress_cb):# {{{
     feat_list = []
     progress_cb(30)
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -136,9 +136,9 @@ def _pre_kstest(args, resdata, progress_cb):
     resdata['pcaks'] = out_path
     progress_cb(100)
     return resdata
+# }}}
 
-
-def gray_image_blur(frame_gray, mode, kernel):
+def gray_image_blur(frame_gray, mode, kernel):# {{{
     if mode == 'averaging':
         frame_gray = cv2.blur(frame_gray, (kernel, kernel))
     elif mode == 'median':
@@ -146,7 +146,7 @@ def gray_image_blur(frame_gray, mode, kernel):
     elif mode == 'gaussian':
         frame_gray = cv2.GaussianBlur(frame_gray, (kernel, kernel), 0)
     return frame_gray
-
+# }}}
 
 g_switch_names = [
     "rmstill_frame_enable", "color_tracker_enable",
@@ -191,7 +191,7 @@ def video_preprocess(args, progress_cb=None):
         segs = video_path[8:].split('/')
         vname = segs[-1].split('.')[0]
         coss3_path = os.path.join('/', *segs[1:3], 'outputs', vname, 'repnet_tf')
-        coss3_delete(coss3_path[1:], logger)
+        coss3_delete(coss3_path[1:] + '/config.json', logger)
     else:
         vname = 'unknow'
         coss3_path = ''
@@ -268,6 +268,7 @@ def video_preprocess(args, progress_cb=None):
     if debug_write_video:
         writer = cv2.VideoWriter(f'{cache_path}/_pre_video.mp4', cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
 
+    # global set{{{
     global_gray_frame, global_gray_check = None, None
     global_enhance_funcs = []
     global_remove_shadow = args.get('global_remove_shadow', None)
@@ -276,6 +277,7 @@ def video_preprocess(args, progress_cb=None):
         global_grap_step = grap_speed
     else:
         global_grap_step = int(fps * args.get('global_grap_interval', -1))
+    global_thresh_binary = args.get('global_thresh_binary', -1)
     global_blur_type = args.get('global_blur_type', 'none')
     global_filter_kernel = args.get('global_filter_kernel', 3)
     global_lowest_bright = args.get('global_lowest_bright', None)
@@ -369,6 +371,7 @@ def video_preprocess(args, progress_cb=None):
         cnt = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     else:
         cnt = all_cnt
+# }}}
 
     logger.info(f'width[{width} vs {w}] height[{height} vs {h}] framerate[{fps}] count[{all_cnt} vs {cnt}]')
 
@@ -527,11 +530,12 @@ def video_preprocess(args, progress_cb=None):
         color_lower_rate = args.get('color_lower_rate', 0.2)
         color_upper_rate = args.get('color_upper_rate', 0.8)
         color_track_direction = args.get('color_track_direction', 0)
-        color_buffer = np.zeros((color_buffer_size, ))
+        # color_buffer = np.zeros((color_buffer_size, ))
+        color_buffer = np.random.randint(0, 2, color_buffer_size)
         if color_track_direction > 0:
-            color_direction_buffer = np.zeros_like(color_buffer)
-        color_lower_value = int(color_buffer_size * color_lower_rate)
-        color_upper_value = int(color_buffer_size * color_upper_rate)
+            color_direction_buffer = color_buffer.copy()
+        color_lower_value = int(math.ceil(color_buffer_size * color_lower_rate))
+        color_upper_value = int(math.floor(color_buffer_size * color_upper_rate))
         logger.info(f'color_tracker: ({color_area_range}, {color_lower_value}, {color_upper_value})')
         resdata['color_area_range'] = color_area_range
         resdata['color_lower_value'] = color_lower_value
@@ -613,6 +617,10 @@ def video_preprocess(args, progress_cb=None):
         if global_blur_type != "none":
             frame_gray = gray_image_blur(frame_gray, global_blur_type, global_filter_kernel)
 
+        if global_thresh_binary > 0:
+            frame_binary = cv2.threshold(frame_gray, global_thresh_binary, 255, cv2.THRESH_BINARY)[1]
+            frame_bgr = cv2.cvtColor(frame_binary, cv2.COLOR_GRAY2BGR)
+
         frame_hsv = None
         if global_lowest_bright is not None:
             frame_hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
@@ -673,7 +681,6 @@ def video_preprocess(args, progress_cb=None):
 
             for func in global_enhance_funcs:
                 color_mask = func(color_mask)
-
             colorval = np.sum(color_mask == 255)
             if color_area_range[0] < colorval < color_area_range[1]:
                 color_buffer[-1] = 1
@@ -693,7 +700,7 @@ def video_preprocess(args, progress_cb=None):
 
             color_pre_count = color_count
 
-            if color_lower_value < val < color_upper_value:
+            if color_lower_value <= val <= color_upper_value:
                 keep_flag = True
                 featdata.append(round(colorval / area, 3))
                 if devmode:
