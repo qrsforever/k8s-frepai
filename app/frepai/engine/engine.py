@@ -45,6 +45,8 @@ def _features_sliding_window(data, window_size, method):# {{{
         maxvals = np.max(wdata, axis=-1)
         data = (data - minvals) / (maxvals - minvals)
     elif method == 'mean':
+        data = np.mean(wdata, axis=-1)
+    elif method == 'submean':
         data = data - np.mean(wdata, axis=-1)
     elif method == 'standard':
         mean = np.mean(wdata, axis=-1)
@@ -325,9 +327,12 @@ def _engine_stdwave(pigeon, progress_cb):# {{{
     progress_cb(10)
     stdwave_data = np.load(f'{pigeon["cache_path"]}/stdwave_data.npy')
     if stdwave_sub_average:
-        stdwave_data = _features_sliding_window(stdwave_data, stdwave_window_size, 'mean')
+        stdwave_data = _features_sliding_window(stdwave_data, stdwave_window_size, 'submean')
         if devmode:
             logger.info(np.round(stdwave_data, 3).tolist())
+    else:
+        stdwave_data = _features_sliding_window(stdwave_data, stdwave_window_size, 'mean')
+        
     progress_cb(50)
     mean, std = stdwave_data.mean(), stdwave_data.std()
     logger.info(f'mean: {mean}, std: {std}')
